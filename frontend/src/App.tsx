@@ -35,13 +35,32 @@ function App() {
     }, []);
 
     return (
-        <div className="layout">
-            <div className="sidebar">
-                <div className="sidebar-header">
-                    <span>EXPLORER</span>
-                    <button onClick={handleSelectFolder}>Open Folder</button>
+        <div className="app-container">
+            <div className="menu-bar">
+                <div className="menu-item">
+                    File
+                    <div className="menu-dropdown">
+                        <div className="menu-dropdown-item" onClick={handleSelectFolder}>
+                            Open Folder...
+                        </div>
+                    </div>
                 </div>
-                <div className="file-list">
+                <div className="menu-item">
+                    View
+                    <div className="menu-dropdown">
+                        <div className="menu-dropdown-item" style={{ color: 'var(--text-dim)' }}>
+                            (Coming soon)
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div className="layout">
+                <div className="sidebar">
+                    <div className="sidebar-header">
+                        <span>EXPLORER</span>
+                    </div>
+                    <div className="file-list">
                     {files.map(f => (
                         <div 
                             key={f.path} 
@@ -89,6 +108,7 @@ function App() {
                     </div>
                 )}
             </div>
+        </div>
         </div>
     );
 }

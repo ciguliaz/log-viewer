@@ -22,10 +22,70 @@ body {
   font-size: 13px;
 }
 
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.menu-bar {
+  background-color: var(--bg-header);
+  display: flex;
+  align-items: center;
+  height: 30px;
+  font-size: 13px;
+  color: var(--text-main);
+  user-select: none;
+}
+
+.menu-item {
+  position: relative;
+  padding: 0 12px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-light);
+}
+
+.menu-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  z-index: 100;
+  min-width: 200px;
+  padding: 4px 0;
+}
+
+.menu-item:hover .menu-dropdown {
+  display: block;
+}
+
+.menu-dropdown-item {
+  padding: 6px 15px;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+}
+
+.menu-dropdown-item:hover {
+  background-color: var(--accent);
+  color: var(--text-light);
+}
+
 .layout {
   display: flex;
-  height: 100vh;
+  flex-grow: 1;
   width: 100vw;
+  overflow: hidden;
 }
 
 .sidebar {

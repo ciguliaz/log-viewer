@@ -119,6 +119,7 @@ func (a *App) tailLogs(ctx context.Context, filePath string) {
 		Follow:    true,
 		ReOpen:    true,
 		MustExist: false,
+		Poll:      true, // Use polling on Windows to avoid CancelIo/CloseHandle fsnotify errors
 		Location:  &tail.SeekInfo{Offset: 0, Whence: 2}, // Tail from end
 		Logger:    tail.DiscardingLogger,
 	})
