@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import './App.css';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { SelectFolder, ListFiles, StartTailing, GetInitialLogs } from '../wailsjs/go/main/App';
@@ -9,6 +9,16 @@ function App() {
     const [files, setFiles] = useState<main.FileInfo[]>([]);
     const [activeFile, setActiveFile] = useState<main.FileInfo | null>(null);
     const [logs, setLogs] = useState<main.LogEntry[]>([]);
+    const [compactMode, setCompactMode] = useState<boolean>(false);
+
+    const displayLogs = useMemo(() => {
+        return logs.map(l => ({
+            ...l,
+            startTime: l.time,
+            endTime: l.endTime || l.time,
+            count: l.count || 1
+        }));
+    }, [logs]);
 
     const handleSelectFolder = async () => {
         const selected = await SelectFolder();
@@ -48,8 +58,8 @@ function App() {
                 <div className="menu-item">
                     View
                     <div className="menu-dropdown">
-                        <div className="menu-dropdown-item" style={{ color: 'var(--text-dim)' }}>
-                            (Coming soon)
+                        <div className="menu-dropdown-item" onClick={() => setCompactMode(!compactMode)}>
+                            <span style={{ width: '20px' }}>{compactMode ? '✓' : ''}</span> Compact Mode
                         </div>
                     </div>
                 </div>
@@ -85,17 +95,21 @@ function App() {
                             <table>
                                 <thead>
                                     <tr>
-                                        <th className="col-time">Time</th>
+                                        <th className={compactMode ? "col-time-expanded" : "col-time"}>Time</th>
                                         <th className="col-tag">Tag</th>
                                         <th className="col-msg">Message</th>
+                                        {compactMode && <th className="col-count">Count</th>}
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {logs.map((log) => (
+                                    {displayLogs.map((log) => (
                                         <tr key={log.id}>
-                                            <td className="col-time">{log.time}</td>
+                                            <td className={compactMode ? "col-time-expanded" : "col-time"}>
+                                                {log.count > 1 ? `${log.startTime} - ${log.endTime}` : log.startTime}
+                                            </td>
                                             <td className="col-tag">{log.tag}</td>
                                             <td className="col-msg">{log.message || log.raw}</td>
+                                            {compactMode && <td className="col-count">{log.count > 1 ? log.count : ''}</td>}
                                         </tr>
                                     ))}
                                 </tbody>

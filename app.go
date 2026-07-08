@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 type LogEntry struct {
 	Id      string `json:"id"`
 	Time    string `json:"time"`
+	EndTime string `json:"endTime"`
+	Count   int    `json:"count"`
 	Level   string `json:"level"`
 	Tag     string `json:"tag"`
 	Message string `json:"message"`
@@ -46,10 +49,30 @@ func (a *App) startup(ctx context.Context) {
 	go a.broadcastLoop()
 }
 
+func getDefaultDir() string {
+	dir := `C:\Program Files (x86)\hatacone\logs`
+	if _, err := os.Stat(dir); err == nil {
+		return dir
+	}
+	
+	if _, err := os.Stat(`C:\`); err == nil {
+		return `C:\`
+	}
+	
+	for _, drive := range "DEFGHIJKLMNOPQRSTUVWXYZ" {
+		path := string(drive) + `:\`
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	
+	return ""
+}
+
 // SelectFolder opens a dialog to select a directory
 func (a *App) SelectFolder() string {
 	opts := runtime.OpenDialogOptions{
-		DefaultDirectory: `C:\Program Files (x86)\hatacone\logs`,
+		DefaultDirectory: getDefaultDir(),
 		Title:            "Select Log Folder",
 	}
 	dir, err := runtime.OpenDirectoryDialog(a.ctx, opts)
@@ -106,7 +129,7 @@ func (a *App) StartTailing(filePath string) {
 	go a.tailLogs(ctx, filePath)
 }
 
-var shadowRegex = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})\s+\[(.+?)\]\s+(.*?)\s+hash=([a-zA-Z0-9]+)\s+:(\d+)\s+→\s+(.*?)\s+→\s+(.*)$`)
+var shadowRegex = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})\s+\[?(.+?)\]?\s+(.*?)\s+hash=([a-zA-Z0-9]+)\s+:(\d+)\s+→\s+(.*?)\s+→\s+(.*)$`)
 var bracketRegex = regexp.MustCompile(`^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s+(.*)$`)
 
 func (a *App) tailLogs(ctx context.Context, filePath string) {
@@ -120,7 +143,7 @@ func (a *App) tailLogs(ctx context.Context, filePath string) {
 		ReOpen:    true,
 		MustExist: false,
 		Poll:      true, // Use polling on Windows to avoid CancelIo/CloseHandle fsnotify errors
-		Location:  &tail.SeekInfo{Offset: 0, Whence: 2}, // Tail from end
+		Location:  &tail.SeekInfo{Offset: 0, Whence: 0}, // Tail from beginning to support static files
 		Logger:    tail.DiscardingLogger,
 	})
 	if err != nil {
@@ -144,9 +167,11 @@ func (a *App) tailLogs(ctx context.Context, filePath string) {
 }
 
 func (a *App) parseLine(text string) {
+	text = strings.TrimRight(text, "\r\n")
 	var entry LogEntry
 	entry.Id = fmt.Sprintf("%d", time.Now().UnixNano())
 	entry.Raw = text
+	entry.Count = 1
 	
 	if a.isShadow {
 		matches := shadowRegex.FindStringSubmatch(text)
@@ -167,13 +192,38 @@ func (a *App) parseLine(text string) {
 			entry.Message = text
 		}
 	}
+	
+	entry.EndTime = entry.Time
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	
+	if len(a.logEntries) > 0 {
+		lastIdx := len(a.logEntries) - 1
+		lastEntry := &a.logEntries[lastIdx]
+		
+		lastMsg := lastEntry.Message
+		if lastMsg == "" {
+			lastMsg = lastEntry.Raw
+		}
+		currMsg := entry.Message
+		if currMsg == "" {
+			currMsg = entry.Raw
+		}
+		
+		if lastEntry.Tag == entry.Tag && lastMsg == currMsg {
+			lastEntry.Count++
+			if entry.Time != "" {
+				lastEntry.EndTime = entry.Time
+			}
+			return
+		}
+	}
+	
 	a.logEntries = append(a.logEntries, entry)
 	
-	// Keep maximum 1000 entries in memory
-	if len(a.logEntries) > 1000 {
+	// Keep maximum 50000 entries in memory
+	if len(a.logEntries) > 50000 {
 		a.logEntries = a.logEntries[1:]
 	}
 }

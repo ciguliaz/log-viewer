@@ -204,8 +204,10 @@ tr:hover {
 }
 
 .col-time { width: 150px; color: #569cd6; }
+.col-time-expanded { width: 300px; color: #569cd6; }
 .col-tag { width: 100px; color: #4ec9b0; }
 .col-msg { color: #ce9178; }
+.col-count { width: 60px; color: #dcdcaa; text-align: center; }
 
 .empty-state {
   display: flex;
