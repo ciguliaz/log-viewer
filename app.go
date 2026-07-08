@@ -129,8 +129,14 @@ func (a *App) StartTailing(filePath string) {
 	go a.tailLogs(ctx, filePath)
 }
 
-var shadowRegex = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})\s+\[?(.+?)\]?\s+(.*?)\s+hash=([a-zA-Z0-9]+)\s+:(\d+)\s+→\s+(.*?)\s+→\s+(.*)$`)
-var bracketRegex = regexp.MustCompile(`^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s+(.*)$`)
+var (
+	shadowRegex  = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})\s+\[(.+?)\]\s+(.*?)\s+hash=([a-zA-Z0-9]+)\s+:(\d+)\s+→\s+(.*?)\s+→\s+(.*)$`)
+	bracketRegex = regexp.MustCompile(`^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s+(.*)$`)
+	kvTimeRegex  = regexp.MustCompile(`time="?([^"\s]+)"?`)
+	kvTagRegex   = regexp.MustCompile(`tag="?([^"\s]+)"?`)
+	kvLevelRegex = regexp.MustCompile(`level="?([^"\s]+)"?`)
+	kvMsgRegex   = regexp.MustCompile(`msg="([^"]+)"|msg=([^\s]+)`)
+)
 
 func (a *App) tailLogs(ctx context.Context, filePath string) {
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
@@ -183,11 +189,29 @@ func (a *App) parseLine(text string) {
 			entry.Message = text
 		}
 	} else {
-		// Generic parse `[YYYY-MM-DD HH:MM:SS] Message`
-		matches := bracketRegex.FindStringSubmatch(text)
-		if len(matches) >= 3 {
+		// Try bracket parse `[YYYY-MM-DD HH:MM:SS] Message`
+		if matches := bracketRegex.FindStringSubmatch(text); len(matches) >= 3 {
 			entry.Time = matches[1]
 			entry.Message = matches[2]
+		} else if matches := kvTimeRegex.FindStringSubmatch(text); len(matches) > 1 {
+			// Try key-value parse like time="2026-07-08T16:40:38+07:00"
+			entry.Time = matches[1]
+			
+			if m := kvTagRegex.FindStringSubmatch(text); len(m) > 1 {
+				entry.Tag = m[1]
+			}
+			if m := kvLevelRegex.FindStringSubmatch(text); len(m) > 1 {
+				entry.Level = m[1]
+			}
+			if m := kvMsgRegex.FindStringSubmatch(text); len(m) > 1 {
+				if m[1] != "" {
+					entry.Message = m[1]
+				} else {
+					entry.Message = m[2]
+				}
+			} else {
+				entry.Message = text
+			}
 		} else {
 			entry.Message = text
 		}
