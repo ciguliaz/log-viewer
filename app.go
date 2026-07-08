@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nxadm/tail"
@@ -35,12 +37,16 @@ type App struct {
 	ctx           context.Context
 	currentTail   *tail.Tail
 	tailCancel    context.CancelFunc
-	mu            sync.Mutex
-	logEntries    []LogEntry
-	isShadow      bool
-	lastSentIdx   int
-	sessionID     int64
+	mu             sync.Mutex
+	logEntries     []LogEntry
+	isShadow       bool
+	lastSentIdx    int
+	sessionID      int64
+	activeFilePath string
+	fileOffset     int64
 }
+
+var idCounter int64
 
 // NewApp creates a new App application struct
 func NewApp() *App {
@@ -129,7 +135,16 @@ func (a *App) StartTailing(filePath string) {
 	a.logEntries = make([]LogEntry, 0)
 	a.lastSentIdx = 0
 	a.isShadow = filepath.Base(filePath) == "shadow.log"
+	a.activeFilePath = filePath
 	a.sessionID = time.Now().UnixNano()
+	
+	fileInfo, err := os.Stat(filePath)
+	if err == nil {
+		a.fileOffset = fileInfo.Size()
+	} else {
+		a.fileOffset = 0
+	}
+	
 	currentSession := a.sessionID
 	
 	ctx, cancel := context.WithCancel(context.Background())
@@ -157,7 +172,7 @@ func (a *App) tailLogs(ctx context.Context, filePath string, sessionID int64) {
 		ReOpen:    true,
 		MustExist: false,
 		Poll:      true, // Use polling on Windows to avoid CancelIo/CloseHandle fsnotify errors
-		Location:  &tail.SeekInfo{Offset: 0, Whence: 0}, // Tail from beginning to support static files
+		Location:  &tail.SeekInfo{Offset: 0, Whence: 2}, // Tail from EOF since we lazy load history
 		Logger:    tail.DiscardingLogger,
 	})
 	if err != nil {
@@ -181,12 +196,6 @@ func (a *App) tailLogs(ctx context.Context, filePath string, sessionID int64) {
 }
 
 func (a *App) parseLine(text string, sessionID int64) {
-	text = strings.TrimRight(text, "\r\n")
-	var entry LogEntry
-	entry.Id = fmt.Sprintf("%d", time.Now().UnixNano())
-	entry.Raw = text
-	entry.Count = 1
-	
 	a.mu.Lock()
 	if sessionID != a.sessionID {
 		a.mu.Unlock()
@@ -194,6 +203,30 @@ func (a *App) parseLine(text string, sessionID int64) {
 	}
 	isShadow := a.isShadow
 	a.mu.Unlock()
+	
+	entry := a.parseSingleLine(text, isShadow)
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	
+	a.logEntries = append(a.logEntries, entry)
+	
+	// Keep maximum 50000 entries in memory for live tail
+	if len(a.logEntries) > 50000 {
+		a.logEntries = a.logEntries[1:]
+		if a.lastSentIdx > 0 {
+			a.lastSentIdx--
+		}
+	}
+}
+
+func (a *App) parseSingleLine(text string, isShadow bool) LogEntry {
+	text = strings.TrimRight(text, "\r\n")
+	var entry LogEntry
+	id := atomic.AddInt64(&idCounter, 1)
+	entry.Id = fmt.Sprintf("%d-%d", time.Now().UnixNano(), id)
+	entry.Raw = text
+	entry.Count = 1
 	
 	if isShadow {
 		matches := shadowRegex.FindStringSubmatch(text)
@@ -227,19 +260,69 @@ func (a *App) parseLine(text string, sessionID int64) {
 	}
 	
 	entry.EndTime = entry.Time
+	return entry
+}
+
+// LoadPreviousChunk reads a 64KB chunk of logs backwards from the current fileOffset
+func (a *App) LoadPreviousChunk() []LogEntry {
+	a.mu.Lock()
+	filePath := a.activeFilePath
+	offset := a.fileOffset
+	isShadow := a.isShadow
+	a.mu.Unlock()
+
+	if offset <= 0 || filePath == "" {
+		return nil
+	}
+
+	readSize := int64(64 * 1024) // 64KB chunk
+	if offset < readSize {
+		readSize = offset
+	}
+
+	newOffset := offset - readSize
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	buffer := make([]byte, readSize)
+	_, err = file.ReadAt(buffer, newOffset)
+	if err != nil && err != io.EOF {
+		return nil
+	}
+
+	// Find the first newline to avoid parsing partial lines
+	startIdx := 0
+	if newOffset > 0 {
+		for i := 0; i < len(buffer); i++ {
+			if buffer[i] == '\n' {
+				startIdx = i + 1
+				break
+			}
+		}
+		newOffset += int64(startIdx)
+	}
 
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	a.fileOffset = newOffset
+	a.mu.Unlock()
+
+	text := string(buffer[startIdx:])
+	lines := strings.Split(text, "\n")
 	
-	a.logEntries = append(a.logEntries, entry)
-	
-	// Keep maximum 50000 entries in memory
-	if len(a.logEntries) > 50000 {
-		a.logEntries = a.logEntries[1:]
-		if a.lastSentIdx > 0 {
-			a.lastSentIdx--
+	var prepended []LogEntry
+	for _, line := range lines {
+		line = strings.TrimRight(line, "\r")
+		if line == "" {
+			continue
 		}
+		entry := a.parseSingleLine(line, isShadow)
+		prepended = append(prepended, entry)
 	}
+
+	return prepended
 }
 
 func (a *App) broadcastLoop() {

@@ -10,6 +10,10 @@ export function ListFiles(arg1) {
   return window['go']['main']['App']['ListFiles'](arg1);
 }
 
+export function LoadPreviousChunk() {
+  return window['go']['main']['App']['LoadPreviousChunk']();
+}
+
 export function SelectFolder() {
   return window['go']['main']['App']['SelectFolder']();
 }

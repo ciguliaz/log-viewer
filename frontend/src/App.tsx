@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import './App.css';
 import { EventsOn } from '../wailsjs/runtime/runtime';
-import { SelectFolder, ListFiles, StartTailing, GetInitialLogs } from '../wailsjs/go/main/App';
+import { SelectFolder, ListFiles, StartTailing, LoadPreviousChunk } from '../wailsjs/go/main/App';
 import { main } from '../wailsjs/go/models';
-import { TableVirtuoso } from 'react-virtuoso';
+import { TableVirtuoso, TableVirtuosoHandle } from 'react-virtuoso';
 
 function App() {
     const [folder, setFolder] = useState<string>('');
@@ -12,6 +12,11 @@ function App() {
     const [logs, setLogs] = useState<main.LogEntry[]>([]);
     const [compactMode, setCompactMode] = useState<boolean>(false);
     const [searchTerm, setSearchTerm] = useState<string>('');
+    const [autoScroll, setAutoScroll] = useState<boolean>(true);
+    const [firstItemIndex, setFirstItemIndex] = useState<number>(1000000);
+    const isLoadingMore = useRef(false);
+    
+    const virtuosoRef = useRef<TableVirtuosoHandle>(null);
 
     const displayLogs = useMemo(() => {
         let result = logs;
@@ -67,9 +72,25 @@ function App() {
     const handleSelectFile = async (file: main.FileInfo) => {
         setActiveFile(file);
         setLogs([]); // Clear while loading
+        setAutoScroll(true); // Re-enable auto-scroll on new file
+        setFirstItemIndex(1000000); // Reset index for new file
         await StartTailing(file.path);
-        const initial = await GetInitialLogs();
+        const initial = await LoadPreviousChunk();
         setLogs(initial || []);
+    };
+
+    const loadMoreHistory = async () => {
+        if (isLoadingMore.current) return;
+        isLoadingMore.current = true;
+        try {
+            const chunk = await LoadPreviousChunk();
+            if (chunk && chunk.length > 0) {
+                setLogs(prev => [...chunk, ...prev]);
+                setFirstItemIndex(prev => prev - chunk.length);
+            }
+        } finally {
+            isLoadingMore.current = false;
+        }
     };
 
     useEffect(() => {
@@ -87,6 +108,20 @@ function App() {
             });
         });
     }, []);
+
+    // Auto-scroll logic
+    useEffect(() => {
+        if (autoScroll && virtuosoRef.current && displayLogs.length > 0) {
+            // Use timeout to ensure DOM has updated
+            setTimeout(() => {
+                virtuosoRef.current?.scrollToIndex({
+                    index: displayLogs.length - 1,
+                    align: 'end',
+                    behavior: 'auto'
+                });
+            }, 50);
+        }
+    }, [displayLogs.length, autoScroll]);
 
     return (
         <div className="app-container">
@@ -147,8 +182,15 @@ function App() {
                         </div>
                         <div className="log-container">
                             <TableVirtuoso
+                                ref={virtuosoRef}
                                 className="virtuoso-table"
                                 data={displayLogs}
+                                firstItemIndex={firstItemIndex}
+                                initialTopMostItemIndex={displayLogs.length > 0 ? displayLogs.length - 1 : 0}
+                                startReached={loadMoreHistory}
+                                atBottomStateChange={(atBottom) => {
+                                    setAutoScroll(atBottom);
+                                }}
                                 fixedHeaderContent={() => (
                                     <tr style={{ background: 'var(--bg-dark)' }}>
                                         <th className={compactMode ? "col-time-expanded" : "col-time"}>Time</th>
