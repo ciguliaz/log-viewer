@@ -1,81 +1,93 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 import { EventsOn } from '../wailsjs/runtime/runtime';
-import { GetInitialConnections } from '../wailsjs/go/main/App';
-
-interface Connection {
-    app: string;
-    hash: string;
-    dest: string;
-    packets: number;
-    route: string;
-    last_seen: string;
-}
+import { SelectFolder, ListFiles, StartTailing, GetInitialLogs } from '../wailsjs/go/main/App';
+import { main } from '../wailsjs/go/models';
 
 function App() {
-    const [connections, setConnections] = useState<Connection[]>([]);
+    const [folder, setFolder] = useState<string>('');
+    const [files, setFiles] = useState<main.FileInfo[]>([]);
+    const [activeFile, setActiveFile] = useState<main.FileInfo | null>(null);
+    const [logs, setLogs] = useState<main.LogEntry[]>([]);
+
+    const handleSelectFolder = async () => {
+        const selected = await SelectFolder();
+        if (selected) {
+            setFolder(selected);
+            const fileList = await ListFiles(selected);
+            setFiles(fileList || []);
+        }
+    };
+
+    const handleSelectFile = async (file: main.FileInfo) => {
+        setActiveFile(file);
+        setLogs([]); // Clear while loading
+        await StartTailing(file.path);
+        const initial = await GetInitialLogs();
+        setLogs(initial || []);
+    };
 
     useEffect(() => {
-        // Fetch initial data
-        GetInitialConnections().then(setConnections);
-
         // Listen for live updates
-        EventsOn('connections_update', (data: Connection[]) => {
-            // Sort by packets descending
-            const sorted = [...data].sort((a, b) => b.packets - a.packets);
-            setConnections(sorted);
+        EventsOn('log_update', (data: main.LogEntry[]) => {
+            setLogs(data || []);
         });
     }, []);
 
     return (
-        <div className="dashboard">
-            <div className="header">
-                <h1>
-                    🚀 Hatacone Shadow Live 
-                    <span className="badge">{connections.length} Active</span>
-                </h1>
+        <div className="layout">
+            <div className="sidebar">
+                <div className="sidebar-header">
+                    <span>EXPLORER</span>
+                    <button onClick={handleSelectFolder}>Open Folder</button>
+                </div>
+                <div className="file-list">
+                    {files.map(f => (
+                        <div 
+                            key={f.path} 
+                            className={`file-item ${activeFile?.path === f.path ? 'active' : ''}`}
+                            onClick={() => handleSelectFile(f)}
+                        >
+                            📄 {f.name}
+                        </div>
+                    ))}
+                    {files.length === 0 && folder && (
+                        <div style={{padding: '10px', color: 'var(--text-dim)'}}>No .log files found.</div>
+                    )}
+                </div>
             </div>
-            
-            <div className="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>App</th>
-                            <th>Hash</th>
-                            <th>Destination</th>
-                            <th>Route</th>
-                            <th>Packets</th>
-                            <th>Last Seen</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {connections.map((conn) => (
-                            <tr key={conn.hash}>
-                                <td>{conn.app}</td>
-                                <td className="hash-cell">{conn.hash}</td>
-                                <td>{conn.dest}</td>
-                                <td>
-                                    <span className={`route-badge route-${conn.route.toLowerCase()}`}>
-                                        {conn.route.toUpperCase()}
-                                    </span>
-                                </td>
-                                <td>
-                                    <span className="packet-count" key={`${conn.hash}-${conn.packets}`}>
-                                        {conn.packets.toLocaleString()}
-                                    </span>
-                                </td>
-                                <td>{conn.last_seen}</td>
-                            </tr>
-                        ))}
-                        {connections.length === 0 && (
-                            <tr>
-                                <td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                                    Waiting for shadow.log data...
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
+            <div className="main-view">
+                {activeFile ? (
+                    <>
+                        <div className="tabs">
+                            <div className="tab">{activeFile.name}</div>
+                        </div>
+                        <div className="log-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th className="col-time">Time</th>
+                                        <th className="col-tag">Tag</th>
+                                        <th className="col-msg">Message</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {logs.map((log) => (
+                                        <tr key={log.id}>
+                                            <td className="col-time">{log.time}</td>
+                                            <td className="col-tag">{log.tag}</td>
+                                            <td className="col-msg">{log.message || log.raw}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
+                ) : (
+                    <div className="empty-state">
+                        Select a file to view logs
+                    </div>
+                )}
             </div>
         </div>
     );

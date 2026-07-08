@@ -1,25 +1,39 @@
 export namespace main {
 	
-	export class Connection {
-	    app: string;
-	    hash: string;
-	    dest: string;
-	    packets: number;
-	    route: string;
-	    last_seen: string;
+	export class FileInfo {
+	    name: string;
+	    path: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new Connection(source);
+	        return new FileInfo(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.app = source["app"];
-	        this.hash = source["hash"];
-	        this.dest = source["dest"];
-	        this.packets = source["packets"];
-	        this.route = source["route"];
-	        this.last_seen = source["last_seen"];
+	        this.name = source["name"];
+	        this.path = source["path"];
+	    }
+	}
+	export class LogEntry {
+	    id: string;
+	    time: string;
+	    level: string;
+	    tag: string;
+	    message: string;
+	    raw: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.time = source["time"];
+	        this.level = source["level"];
+	        this.tag = source["tag"];
+	        this.message = source["message"];
+	        this.raw = source["raw"];
 	    }
 	}
 

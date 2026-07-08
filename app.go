@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sync"
 	"time"
@@ -12,28 +13,29 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-type Connection struct {
-	App      string `json:"app"`
-	Hash     string `json:"hash"`
-	Dest     string `json:"dest"`
-	Packets  int    `json:"packets"`
-	Route    string `json:"route"`
-	LastSeen string `json:"last_seen"` // timestamp string
+type LogEntry struct {
+	Id      string `json:"id"`
+	Time    string `json:"time"`
+	Level   string `json:"level"`
+	Tag     string `json:"tag"`
+	Message string `json:"message"`
+	Raw     string `json:"raw"`
 }
 
 // App struct
 type App struct {
-	ctx         context.Context
-	connections map[string]*Connection
-	mu          sync.Mutex
-	logPath     string
+	ctx           context.Context
+	currentTail   *tail.Tail
+	tailCancel    context.CancelFunc
+	mu            sync.Mutex
+	logEntries    []LogEntry
+	isShadow      bool
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		connections: make(map[string]*Connection),
-		logPath:     `C:\Program Files (x86)\hatacone\logs\shadow.log`,
+		logEntries: make([]LogEntry, 0),
 	}
 }
 
@@ -41,18 +43,79 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	go a.tailLogs()
 	go a.broadcastLoop()
 }
 
-var logRegex = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})\s+\[(.+?)\]\s+(.*?)\s+hash=([a-zA-Z0-9]+)\s+:(\d+)\s+→\s+(.*?)\s+→\s+(.*)$`)
+// SelectFolder opens a dialog to select a directory
+func (a *App) SelectFolder() string {
+	opts := runtime.OpenDialogOptions{
+		DefaultDirectory: `C:\Program Files (x86)\hatacone\logs`,
+		Title:            "Select Log Folder",
+	}
+	dir, err := runtime.OpenDirectoryDialog(a.ctx, opts)
+	if err != nil {
+		fmt.Println("Error selecting directory:", err)
+		return ""
+	}
+	return dir
+}
 
-func (a *App) tailLogs() {
-	if _, err := os.Stat(a.logPath); os.IsNotExist(err) {
-		fmt.Println("Log file does not exist:", a.logPath)
+type FileInfo struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// ListFiles lists .log files in a given directory
+func (a *App) ListFiles(dirPath string) []FileInfo {
+	var files []FileInfo
+	if dirPath == "" {
+		return files
+	}
+	
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		fmt.Println("Error reading directory:", err)
+		return files
 	}
 
-	t, err := tail.TailFile(a.logPath, tail.Config{
+	for _, entry := range entries {
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".log" {
+			files = append(files, FileInfo{
+				Name: entry.Name(),
+				Path: filepath.Join(dirPath, entry.Name()),
+			})
+		}
+	}
+	return files
+}
+
+// StartTailing stops any existing tail and starts tailing a new file
+func (a *App) StartTailing(filePath string) {
+	a.mu.Lock()
+	if a.tailCancel != nil {
+		a.tailCancel()
+	}
+	
+	a.logEntries = make([]LogEntry, 0)
+	a.isShadow = filepath.Base(filePath) == "shadow.log"
+	
+	ctx, cancel := context.WithCancel(context.Background())
+	a.tailCancel = cancel
+	a.mu.Unlock()
+
+	go a.tailLogs(ctx, filePath)
+}
+
+var shadowRegex = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})\s+\[(.+?)\]\s+(.*?)\s+hash=([a-zA-Z0-9]+)\s+:(\d+)\s+→\s+(.*?)\s+→\s+(.*)$`)
+var bracketRegex = regexp.MustCompile(`^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s+(.*)$`)
+
+func (a *App) tailLogs(ctx context.Context, filePath string) {
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		fmt.Println("Log file does not exist:", filePath)
+		return
+	}
+
+	t, err := tail.TailFile(filePath, tail.Config{
 		Follow:    true,
 		ReOpen:    true,
 		MustExist: false,
@@ -64,69 +127,79 @@ func (a *App) tailLogs() {
 		return
 	}
 
+	a.mu.Lock()
+	a.currentTail = t
+	a.mu.Unlock()
+
+	// Stop tailing if context is cancelled
+	go func() {
+		<-ctx.Done()
+		t.Stop()
+	}()
+
 	for line := range t.Lines {
 		a.parseLine(line.Text)
 	}
 }
 
 func (a *App) parseLine(text string) {
-	matches := logRegex.FindStringSubmatch(text)
-	if len(matches) < 8 {
-		return // Ignore lines that don't match our connection format
+	var entry LogEntry
+	entry.Id = fmt.Sprintf("%d", time.Now().UnixNano())
+	entry.Raw = text
+	
+	if a.isShadow {
+		matches := shadowRegex.FindStringSubmatch(text)
+		if len(matches) >= 8 {
+			entry.Time = matches[1]
+			entry.Tag = matches[2]
+			entry.Message = fmt.Sprintf("%s hash=%s :%s → %s → %s", matches[3], matches[4], matches[5], matches[6], matches[7])
+		} else {
+			entry.Message = text
+		}
+	} else {
+		// Generic parse `[YYYY-MM-DD HH:MM:SS] Message`
+		matches := bracketRegex.FindStringSubmatch(text)
+		if len(matches) >= 3 {
+			entry.Time = matches[1]
+			entry.Message = matches[2]
+		} else {
+			entry.Message = text
+		}
 	}
-
-	timestamp := matches[1]
-	// tag := matches[2]
-	appName := matches[3]
-	hash := matches[4]
-	// srcPort := matches[5]
-	dest := matches[6]
-	route := matches[7]
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
-
-	conn, exists := a.connections[hash]
-	if !exists {
-		conn = &Connection{
-			App:     appName,
-			Hash:    hash,
-			Dest:    dest,
-			Route:   route,
-			Packets: 0,
-		}
-		a.connections[hash] = conn
+	a.logEntries = append(a.logEntries, entry)
+	
+	// Keep maximum 1000 entries in memory
+	if len(a.logEntries) > 1000 {
+		a.logEntries = a.logEntries[1:]
 	}
-	conn.Packets++
-	conn.LastSeen = timestamp
 }
 
 func (a *App) broadcastLoop() {
-	ticker := time.NewTicker(500 * time.Millisecond) // Update UI 2 times per second
+	ticker := time.NewTicker(200 * time.Millisecond) // Update UI 5 times per second for smooth scrolling
 	for {
 		select {
 		case <-a.ctx.Done():
 			return
 		case <-ticker.C:
 			a.mu.Lock()
-			// Convert map to slice for frontend
-			var list []Connection
-			for _, c := range a.connections {
-				list = append(list, *c)
-			}
+			// Only broadcast if there are entries to avoid heavy JSON payload if nothing changed
+			// For simplicity in a log viewer, we just send the whole list. In production, we'd send diffs.
+			list := make([]LogEntry, len(a.logEntries))
+			copy(list, a.logEntries)
 			a.mu.Unlock()
-			runtime.EventsEmit(a.ctx, "connections_update", list)
+			runtime.EventsEmit(a.ctx, "log_update", list)
 		}
 	}
 }
 
-// GetInitialConnections allows frontend to fetch immediately on load
-func (a *App) GetInitialConnections() []Connection {
+// GetInitialLogs allows frontend to fetch immediately on load
+func (a *App) GetInitialLogs() []LogEntry {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	var list []Connection
-	for _, c := range a.connections {
-		list = append(list, *c)
-	}
+	list := make([]LogEntry, len(a.logEntries))
+	copy(list, a.logEntries)
 	return list
 }
