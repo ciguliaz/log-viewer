@@ -275,7 +275,7 @@ func (a *App) LoadPreviousChunk() []LogEntry {
 		return nil
 	}
 
-	readSize := int64(64 * 1024) // 64KB chunk
+	readSize := int64(1024 * 1024) // 1MB chunk
 	if offset < readSize {
 		readSize = offset
 	}

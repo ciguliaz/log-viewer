@@ -14,6 +14,7 @@ function App() {
     const [searchTerm, setSearchTerm] = useState<string>('');
     const [autoScroll, setAutoScroll] = useState<boolean>(true);
     const [firstItemIndex, setFirstItemIndex] = useState<number>(1000000);
+    const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
     const isLoadingMore = useRef(false);
     
     const virtuosoRef = useRef<TableVirtuosoHandle>(null);
@@ -72,15 +73,56 @@ function App() {
     const handleSelectFile = async (file: main.FileInfo) => {
         setActiveFile(file);
         setLogs([]); // Clear while loading
+        setIsLoadingHistory(false); // Cancel any previous loading
         setAutoScroll(true); // Re-enable auto-scroll on new file
         setFirstItemIndex(1000000); // Reset index for new file
         await StartTailing(file.path);
         const initial = await LoadPreviousChunk();
         setLogs(initial || []);
+        setIsLoadingHistory(true); // Start auto-loading the rest of the file
     };
 
+    // Auto-loader for background history
+    useEffect(() => {
+        if (!isLoadingHistory) return;
+        
+        let active = true;
+        
+        const loadRemaining = async () => {
+            while (active) {
+                if (isLoadingMore.current) {
+                    await new Promise(r => setTimeout(r, 50));
+                    continue;
+                }
+                
+                isLoadingMore.current = true;
+                const chunk = await LoadPreviousChunk();
+                isLoadingMore.current = false;
+                
+                if (!chunk || chunk.length === 0) {
+                    if (active) setIsLoadingHistory(false);
+                    break;
+                }
+                
+                if (active) {
+                    setLogs(prev => [...chunk, ...prev]);
+                    setFirstItemIndex(prev => prev - chunk.length);
+                }
+                
+                // Yield to browser to prevent UI freeze
+                await new Promise(r => setTimeout(r, 20));
+            }
+        };
+        
+        loadRemaining();
+        
+        return () => { active = false; };
+    }, [isLoadingHistory]);
+
     const loadMoreHistory = async () => {
-        if (isLoadingMore.current) return;
+        // If the auto-loader is already running, let it do the work
+        if (isLoadingHistory || isLoadingMore.current) return;
+        
         isLoadingMore.current = true;
         try {
             const chunk = await LoadPreviousChunk();
@@ -185,6 +227,7 @@ function App() {
                                 ref={virtuosoRef}
                                 className="virtuoso-table"
                                 data={displayLogs}
+                                overscan={500}
                                 firstItemIndex={firstItemIndex}
                                 initialTopMostItemIndex={displayLogs.length > 0 ? displayLogs.length - 1 : 0}
                                 startReached={loadMoreHistory}
