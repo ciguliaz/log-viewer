@@ -17,12 +17,12 @@ export namespace main {
 	export class LogEntry {
 	    id: string;
 	    time: string;
-	    endTime: string;
-	    count: number;
 	    level: string;
 	    tag: string;
 	    message: string;
 	    raw: string;
+	    endTime: string;
+	    count: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new LogEntry(source);
@@ -32,12 +32,12 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.time = source["time"];
-	        this.endTime = source["endTime"];
-	        this.count = source["count"];
 	        this.level = source["level"];
 	        this.tag = source["tag"];
 	        this.message = source["message"];
 	        this.raw = source["raw"];
+	        this.endTime = source["endTime"];
+	        this.count = source["count"];
 	    }
 	}
 

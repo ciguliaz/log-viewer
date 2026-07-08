@@ -3,6 +3,7 @@ import './App.css';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { SelectFolder, ListFiles, StartTailing, GetInitialLogs } from '../wailsjs/go/main/App';
 import { main } from '../wailsjs/go/models';
+import { TableVirtuoso } from 'react-virtuoso';
 
 function App() {
     const [folder, setFolder] = useState<string>('');
@@ -10,15 +11,49 @@ function App() {
     const [activeFile, setActiveFile] = useState<main.FileInfo | null>(null);
     const [logs, setLogs] = useState<main.LogEntry[]>([]);
     const [compactMode, setCompactMode] = useState<boolean>(false);
+    const [searchTerm, setSearchTerm] = useState<string>('');
 
     const displayLogs = useMemo(() => {
-        return logs.map(l => ({
+        let result = logs;
+        if (searchTerm) {
+            const lowerSearch = searchTerm.toLowerCase();
+            result = result.filter(l => 
+                (l.message || '').toLowerCase().includes(lowerSearch) ||
+                (l.tag || '').toLowerCase().includes(lowerSearch) ||
+                (l.raw || '').toLowerCase().includes(lowerSearch)
+            );
+        }
+        
+        const mapped = result.map(l => ({
             ...l,
             startTime: l.time,
-            endTime: l.endTime || l.time,
-            count: l.count || 1
+            endTime: l.time,
+            count: 1
         }));
-    }, [logs]);
+
+        if (!compactMode) {
+            return mapped;
+        }
+
+        const compacted: any[] = [];
+        let current: any = null;
+
+        for (const log of mapped) {
+            if (!current) {
+                current = { ...log };
+                compacted.push(current);
+            } else {
+                if (current.tag === log.tag && current.message === log.message) {
+                    current.count++;
+                    if (log.time) current.endTime = log.time;
+                } else {
+                    current = { ...log };
+                    compacted.push(current);
+                }
+            }
+        }
+        return compacted;
+    }, [logs, searchTerm, compactMode]);
 
     const handleSelectFolder = async () => {
         const selected = await SelectFolder();
@@ -38,9 +73,18 @@ function App() {
     };
 
     useEffect(() => {
-        // Listen for live updates
-        EventsOn('log_update', (data: main.LogEntry[]) => {
-            setLogs(data || []);
+        // Listen for live updates (Delta payloads)
+        EventsOn('log_update', (update: any) => {
+            setLogs(prev => {
+                let next = [...prev];
+                if (update.lastEntryUpdate && next.length > 0) {
+                    next[next.length - 1] = update.lastEntryUpdate;
+                }
+                if (update.newEntries && update.newEntries.length > 0) {
+                    next = [...next, ...update.newEntries];
+                }
+                return next;
+            });
         });
     }, []);
 
@@ -90,30 +134,40 @@ function App() {
                     <>
                         <div className="tabs">
                             <div className="tab">{activeFile.name}</div>
+                            <div className="search-container">
+                                <input 
+                                    type="text" 
+                                    placeholder="Search logs..." 
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="search-input"
+                                />
+                                {searchTerm && <span className="search-count">{displayLogs.length} results</span>}
+                            </div>
                         </div>
                         <div className="log-container">
-                            <table>
-                                <thead>
-                                    <tr>
+                            <TableVirtuoso
+                                className="virtuoso-table"
+                                data={displayLogs}
+                                fixedHeaderContent={() => (
+                                    <tr style={{ background: 'var(--bg-dark)' }}>
                                         <th className={compactMode ? "col-time-expanded" : "col-time"}>Time</th>
                                         <th className="col-tag">Tag</th>
                                         <th className="col-msg">Message</th>
                                         {compactMode && <th className="col-count">Count</th>}
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    {displayLogs.map((log) => (
-                                        <tr key={log.id}>
-                                            <td className={compactMode ? "col-time-expanded" : "col-time"}>
-                                                {log.count > 1 ? `${log.startTime} - ${log.endTime}` : log.startTime}
-                                            </td>
-                                            <td className="col-tag">{log.tag}</td>
-                                            <td className="col-msg">{log.message || log.raw}</td>
-                                            {compactMode && <td className="col-count">{log.count > 1 ? log.count : ''}</td>}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                )}
+                                itemContent={(index, log) => (
+                                    <>
+                                        <td className={compactMode ? "col-time-expanded" : "col-time"}>
+                                            {log.count > 1 ? `${log.startTime} - ${log.endTime}` : log.startTime}
+                                        </td>
+                                        <td className="col-tag">{log.tag}</td>
+                                        <td className="col-msg">{log.message || log.raw}</td>
+                                        {compactMode && <td className="col-count">{log.count > 1 ? log.count : ''}</td>}
+                                    </>
+                                )}
+                            />
                         </div>
                     </>
                 ) : (

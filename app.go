@@ -17,12 +17,17 @@ import (
 type LogEntry struct {
 	Id      string `json:"id"`
 	Time    string `json:"time"`
-	EndTime string `json:"endTime"`
-	Count   int    `json:"count"`
 	Level   string `json:"level"`
 	Tag     string `json:"tag"`
 	Message string `json:"message"`
 	Raw     string `json:"raw"`
+	EndTime string `json:"endTime"`
+	Count   int    `json:"count"`
+}
+
+type LogUpdate struct {
+	NewEntries      []LogEntry `json:"newEntries"`
+	LastEntryUpdate *LogEntry  `json:"lastEntryUpdate"`
 }
 
 // App struct
@@ -33,6 +38,8 @@ type App struct {
 	mu            sync.Mutex
 	logEntries    []LogEntry
 	isShadow      bool
+	lastSentIdx   int
+	sessionID     int64
 }
 
 // NewApp creates a new App application struct
@@ -120,13 +127,16 @@ func (a *App) StartTailing(filePath string) {
 	}
 	
 	a.logEntries = make([]LogEntry, 0)
+	a.lastSentIdx = 0
 	a.isShadow = filepath.Base(filePath) == "shadow.log"
+	a.sessionID = time.Now().UnixNano()
+	currentSession := a.sessionID
 	
 	ctx, cancel := context.WithCancel(context.Background())
 	a.tailCancel = cancel
 	a.mu.Unlock()
 
-	go a.tailLogs(ctx, filePath)
+	go a.tailLogs(ctx, filePath, currentSession)
 }
 
 var (
@@ -134,11 +144,9 @@ var (
 	bracketRegex = regexp.MustCompile(`^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s+(.*)$`)
 	kvTimeRegex  = regexp.MustCompile(`time="?([^"\s]+)"?`)
 	kvTagRegex   = regexp.MustCompile(`tag="?([^"\s]+)"?`)
-	kvLevelRegex = regexp.MustCompile(`level="?([^"\s]+)"?`)
-	kvMsgRegex   = regexp.MustCompile(`msg="([^"]+)"|msg=([^\s]+)`)
 )
 
-func (a *App) tailLogs(ctx context.Context, filePath string) {
+func (a *App) tailLogs(ctx context.Context, filePath string, sessionID int64) {
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		fmt.Println("Log file does not exist:", filePath)
 		return
@@ -168,18 +176,26 @@ func (a *App) tailLogs(ctx context.Context, filePath string) {
 	}()
 
 	for line := range t.Lines {
-		a.parseLine(line.Text)
+		a.parseLine(line.Text, sessionID)
 	}
 }
 
-func (a *App) parseLine(text string) {
+func (a *App) parseLine(text string, sessionID int64) {
 	text = strings.TrimRight(text, "\r\n")
 	var entry LogEntry
 	entry.Id = fmt.Sprintf("%d", time.Now().UnixNano())
 	entry.Raw = text
 	entry.Count = 1
 	
-	if a.isShadow {
+	a.mu.Lock()
+	if sessionID != a.sessionID {
+		a.mu.Unlock()
+		return
+	}
+	isShadow := a.isShadow
+	a.mu.Unlock()
+	
+	if isShadow {
 		matches := shadowRegex.FindStringSubmatch(text)
 		if len(matches) >= 8 {
 			entry.Time = matches[1]
@@ -200,18 +216,11 @@ func (a *App) parseLine(text string) {
 			if m := kvTagRegex.FindStringSubmatch(text); len(m) > 1 {
 				entry.Tag = m[1]
 			}
-			if m := kvLevelRegex.FindStringSubmatch(text); len(m) > 1 {
-				entry.Level = m[1]
-			}
-			if m := kvMsgRegex.FindStringSubmatch(text); len(m) > 1 {
-				if m[1] != "" {
-					entry.Message = m[1]
-				} else {
-					entry.Message = m[2]
-				}
-			} else {
-				entry.Message = text
-			}
+			
+			// Remove the time and tag segments from the message since they are displayed in other columns
+			cleanMsg := kvTimeRegex.ReplaceAllString(text, "")
+			cleanMsg = kvTagRegex.ReplaceAllString(cleanMsg, "")
+			entry.Message = strings.TrimSpace(cleanMsg)
 		} else {
 			entry.Message = text
 		}
@@ -222,33 +231,14 @@ func (a *App) parseLine(text string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	
-	if len(a.logEntries) > 0 {
-		lastIdx := len(a.logEntries) - 1
-		lastEntry := &a.logEntries[lastIdx]
-		
-		lastMsg := lastEntry.Message
-		if lastMsg == "" {
-			lastMsg = lastEntry.Raw
-		}
-		currMsg := entry.Message
-		if currMsg == "" {
-			currMsg = entry.Raw
-		}
-		
-		if lastEntry.Tag == entry.Tag && lastMsg == currMsg {
-			lastEntry.Count++
-			if entry.Time != "" {
-				lastEntry.EndTime = entry.Time
-			}
-			return
-		}
-	}
-	
 	a.logEntries = append(a.logEntries, entry)
 	
 	// Keep maximum 50000 entries in memory
 	if len(a.logEntries) > 50000 {
 		a.logEntries = a.logEntries[1:]
+		if a.lastSentIdx > 0 {
+			a.lastSentIdx--
+		}
 	}
 }
 
@@ -260,12 +250,24 @@ func (a *App) broadcastLoop() {
 			return
 		case <-ticker.C:
 			a.mu.Lock()
-			// Only broadcast if there are entries to avoid heavy JSON payload if nothing changed
-			// For simplicity in a log viewer, we just send the whole list. In production, we'd send diffs.
-			list := make([]LogEntry, len(a.logEntries))
-			copy(list, a.logEntries)
+			
+			var update LogUpdate
+			if a.lastSentIdx > 0 && a.lastSentIdx <= len(a.logEntries) {
+				last := a.logEntries[a.lastSentIdx-1]
+				update.LastEntryUpdate = &last
+			}
+			
+			if a.lastSentIdx < len(a.logEntries) {
+				update.NewEntries = make([]LogEntry, len(a.logEntries)-a.lastSentIdx)
+				copy(update.NewEntries, a.logEntries[a.lastSentIdx:])
+				a.lastSentIdx = len(a.logEntries)
+			}
+			
 			a.mu.Unlock()
-			runtime.EventsEmit(a.ctx, "log_update", list)
+			
+			if len(update.NewEntries) > 0 || update.LastEntryUpdate != nil {
+				runtime.EventsEmit(a.ctx, "log_update", update)
+			}
 		}
 	}
 }
@@ -276,5 +278,6 @@ func (a *App) GetInitialLogs() []LogEntry {
 	defer a.mu.Unlock()
 	list := make([]LogEntry, len(a.logEntries))
 	copy(list, a.logEntries)
+	a.lastSentIdx = len(a.logEntries)
 	return list
 }
