@@ -165,6 +165,7 @@ func (a *App) StartTailing(filePath string) {
 var (
 	shadowRegex  = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})\s+\[(.+?)\]\s+(.*?)\s+hash=([a-zA-Z0-9]+)\s+:(\d+)\s+→\s+(.*?)\s+→\s+(.*)$`)
 	bracketRegex = regexp.MustCompile(`^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s+(.*)$`)
+	pythonRegex  = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})\s+-\s+(.*)$`)
 	kvTimeRegex  = regexp.MustCompile(`time="?([^"\s]+)"?`)
 	kvTagRegex   = regexp.MustCompile(`tag="?([^"\s]+)"?`)
 )
@@ -268,6 +269,10 @@ func (a *App) parseSingleLine(text string, isShadow bool) LogEntry {
 	} else {
 		// Try bracket parse `[YYYY-MM-DD HH:MM:SS] Message`
 		if matches := bracketRegex.FindStringSubmatch(text); len(matches) >= 3 {
+			entry.Time = matches[1]
+			entry.Message = matches[2]
+		} else if matches := pythonRegex.FindStringSubmatch(text); len(matches) >= 3 {
+			// Try python style `YYYY-MM-DD HH:MM:SS,mmm - Message`
 			entry.Time = matches[1]
 			entry.Message = matches[2]
 		} else if matches := kvTimeRegex.FindStringSubmatch(text); len(matches) > 1 {
