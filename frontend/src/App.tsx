@@ -6,8 +6,14 @@ import { main } from '../wailsjs/go/models';
 import { TableVirtuoso, TableVirtuosoHandle } from 'react-virtuoso';
 
 function App() {
-    const [folder, setFolder] = useState<string>('');
-    const [files, setFiles] = useState<main.FileInfo[]>([]);
+    type WorkspaceFolder = {
+        path: string;
+        name: string;
+        files: main.FileInfo[];
+    };
+    const [workspaces, setWorkspaces] = useState<WorkspaceFolder[]>([]);
+    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+    
     const [activeFile, setActiveFile] = useState<main.FileInfo | null>(null);
     const [logs, setLogs] = useState<main.LogEntry[]>([]);
     const [compactMode, setCompactMode] = useState<boolean>(false);
@@ -74,10 +80,39 @@ function App() {
     const handleSelectFolder = async () => {
         const selected = await SelectFolder();
         if (selected) {
-            setFolder(selected);
             const fileList = await ListFiles(selected);
-            setFiles(fileList || []);
+            const wsName = selected.split('\\').pop() || selected.split('/').pop() || selected;
+            setWorkspaces([{
+                path: selected,
+                name: wsName,
+                files: fileList || []
+            }]);
+            setExpandedFolders(new Set([selected]));
         }
+    };
+
+    const handleAddFolder = async () => {
+        const selected = await SelectFolder();
+        if (selected) {
+            if (workspaces.some(w => w.path === selected)) return;
+            const fileList = await ListFiles(selected);
+            const wsName = selected.split('\\').pop() || selected.split('/').pop() || selected;
+            setWorkspaces(prev => [...prev, {
+                path: selected,
+                name: wsName,
+                files: fileList || []
+            }]);
+            setExpandedFolders(prev => new Set(prev).add(selected));
+        }
+    };
+
+    const toggleFolder = (path: string) => {
+        setExpandedFolders(prev => {
+            const next = new Set(prev);
+            if (next.has(path)) next.delete(path);
+            else next.add(path);
+            return next;
+        });
     };
 
     const handleSelectFile = async (file: main.FileInfo) => {
@@ -193,6 +228,9 @@ function App() {
                         <div className="menu-dropdown-item" onClick={handleSelectFolder}>
                             Open Folder...
                         </div>
+                        <div className="menu-dropdown-item" onClick={handleAddFolder}>
+                            Add Folder...
+                        </div>
                     </div>
                 </div>
                 <div className="menu-item">
@@ -214,19 +252,33 @@ function App() {
                         <span>EXPLORER</span>
                     </div>
                     <div className="file-list">
-                    {files.map(f => (
-                        <div 
-                            key={f.path} 
-                            className={`file-item ${activeFile?.path === f.path ? 'active' : ''}`}
-                            onClick={() => handleSelectFile(f)}
-                        >
-                            📄 {f.name}
-                        </div>
-                    ))}
-                    {files.length === 0 && folder && (
-                        <div style={{padding: '10px', color: 'var(--text-dim)'}}>No .log files found.</div>
-                    )}
-                </div>
+                        {workspaces.map(ws => (
+                            <div key={ws.path} className="workspace-folder">
+                                <div 
+                                    className="workspace-header" 
+                                    onClick={() => toggleFolder(ws.path)}
+                                >
+                                    <span style={{fontSize: '9px'}}>{expandedFolders.has(ws.path) ? '▼' : '▶'}</span> {ws.name.toUpperCase()}
+                                </div>
+                                {expandedFolders.has(ws.path) && (
+                                    <div className="workspace-files">
+                                        {ws.files.map(f => (
+                                            <div 
+                                                key={f.path} 
+                                                className={`file-item ${activeFile?.path === f.path ? 'active' : ''}`}
+                                                onClick={() => handleSelectFile(f)}
+                                            >
+                                                📄 {f.name}
+                                            </div>
+                                        ))}
+                                        {ws.files.length === 0 && (
+                                            <div style={{padding: '5px 10px', color: 'var(--text-dim)', fontSize: '12px'}}>No .log files</div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
             </div>
             <div className="main-view">
                 {activeFile ? (
