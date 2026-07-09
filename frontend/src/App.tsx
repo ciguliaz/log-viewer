@@ -24,7 +24,48 @@ function App() {
     const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
     const isLoadingMore = useRef(false);
     const activeFilePathRef = useRef<string | null>(null);
+    const isInitialMount = useRef(true);
     
+    // Load persisted workspaces on mount
+    useEffect(() => {
+        const loadPersisted = async () => {
+            const saved = localStorage.getItem('workspaceFolders');
+            if (saved) {
+                try {
+                    const paths = JSON.parse(saved) as string[];
+                    for (const path of paths) {
+                        const dropResult = await ProcessDrop(path);
+                        if (dropResult) {
+                            setWorkspaces(prev => {
+                                if (prev.some(w => w.path === dropResult.path)) return prev;
+                                return [...prev, {
+                                    path: dropResult.path,
+                                    name: dropResult.name,
+                                    files: dropResult.files || []
+                                }];
+                            });
+                            // Automatically expand restored folders
+                            setExpandedFolders(prev => new Set(prev).add(dropResult.path));
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to parse saved workspaces", e);
+                }
+            }
+        };
+        loadPersisted();
+    }, []);
+
+    // Save workspaces to localStorage when they change
+    useEffect(() => {
+        if (isInitialMount.current) {
+            isInitialMount.current = false;
+            return;
+        }
+        const paths = workspaces.map(w => w.path);
+        localStorage.setItem('workspaceFolders', JSON.stringify(paths));
+    }, [workspaces]);
+
     const virtuosoRef = useRef<TableVirtuosoHandle>(null);
 
     const displayLogs = useMemo(() => {
