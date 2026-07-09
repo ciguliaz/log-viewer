@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -25,6 +26,7 @@ type LogEntry struct {
 	Raw     string `json:"raw"`
 	EndTime string `json:"endTime"`
 	Count   int    `json:"count"`
+	LineNum int64  `json:"lineNum"`
 }
 
 type LogUpdate struct {
@@ -40,10 +42,12 @@ type App struct {
 	mu             sync.Mutex
 	logEntries     []LogEntry
 	isShadow       bool
-	lastSentIdx    int
-	sessionID      int64
-	activeFilePath string
-	fileOffset     int64
+	lastSentIdx         int
+	sessionID           int64
+	activeFilePath      string
+	fileOffset          int64
+	currentFirstLineNum int64
+	currentLastLineNum  int64
 }
 
 var idCounter int64
@@ -145,6 +149,10 @@ func (a *App) StartTailing(filePath string) {
 		a.fileOffset = 0
 	}
 	
+	totalLines := countLinesFast(filePath)
+	a.currentFirstLineNum = totalLines + 1
+	a.currentLastLineNum = totalLines
+	
 	currentSession := a.sessionID
 	
 	ctx, cancel := context.WithCancel(context.Background())
@@ -160,6 +168,25 @@ var (
 	kvTimeRegex  = regexp.MustCompile(`time="?([^"\s]+)"?`)
 	kvTagRegex   = regexp.MustCompile(`tag="?([^"\s]+)"?`)
 )
+
+func countLinesFast(filePath string) int64 {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return 0
+	}
+	defer file.Close()
+
+	buf := make([]byte, 64*1024)
+	var count int64
+	for {
+		c, err := file.Read(buf)
+		count += int64(bytes.Count(buf[:c], []byte{'\n'}))
+		if err != nil {
+			break
+		}
+	}
+	return count
+}
 
 func (a *App) tailLogs(ctx context.Context, filePath string, sessionID int64) {
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
@@ -207,8 +234,8 @@ func (a *App) parseLine(text string, sessionID int64) {
 	entry := a.parseSingleLine(text, isShadow)
 
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	
+	a.currentLastLineNum++
+	entry.LineNum = a.currentLastLineNum
 	a.logEntries = append(a.logEntries, entry)
 	
 	// Keep maximum 50000 entries in memory for live tail
@@ -218,6 +245,7 @@ func (a *App) parseLine(text string, sessionID int64) {
 			a.lastSentIdx--
 		}
 	}
+	a.mu.Unlock()
 }
 
 func (a *App) parseSingleLine(text string, isShadow bool) LogEntry {
@@ -312,13 +340,23 @@ func (a *App) LoadPreviousChunk() []LogEntry {
 	text := string(buffer[startIdx:])
 	lines := strings.Split(text, "\n")
 	
-	var prepended []LogEntry
+	var validLines []string
 	for _, line := range lines {
 		line = strings.TrimRight(line, "\r")
-		if line == "" {
-			continue
+		if line != "" {
+			validLines = append(validLines, line)
 		}
+	}
+
+	a.mu.Lock()
+	a.currentFirstLineNum -= int64(len(validLines))
+	startLine := a.currentFirstLineNum
+	a.mu.Unlock()
+
+	var prepended []LogEntry
+	for i, line := range validLines {
 		entry := a.parseSingleLine(line, isShadow)
+		entry.LineNum = startLine + int64(i)
 		prepended = append(prepended, entry)
 	}
 

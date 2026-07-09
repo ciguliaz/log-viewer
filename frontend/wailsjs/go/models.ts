@@ -23,6 +23,7 @@ export namespace main {
 	    raw: string;
 	    endTime: string;
 	    count: number;
+	    lineNum: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new LogEntry(source);
@@ -38,6 +39,7 @@ export namespace main {
 	        this.raw = source["raw"];
 	        this.endTime = source["endTime"];
 	        this.count = source["count"];
+	        this.lineNum = source["lineNum"];
 	    }
 	}
 

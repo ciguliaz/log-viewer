@@ -11,11 +11,13 @@ function App() {
     const [activeFile, setActiveFile] = useState<main.FileInfo | null>(null);
     const [logs, setLogs] = useState<main.LogEntry[]>([]);
     const [compactMode, setCompactMode] = useState<boolean>(false);
+    const [showLineNumbers, setShowLineNumbers] = useState<boolean>(true);
     const [searchTerm, setSearchTerm] = useState<string>('');
     const [autoScroll, setAutoScroll] = useState<boolean>(true);
     const [firstItemIndex, setFirstItemIndex] = useState<number>(1000000);
     const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
     const isLoadingMore = useRef(false);
+    const activeFilePathRef = useRef<string | null>(null);
     
     const virtuosoRef = useRef<TableVirtuosoHandle>(null);
 
@@ -29,31 +31,39 @@ function App() {
                 (l.raw || '').toLowerCase().includes(lowerSearch)
             );
         }
-        
-        const mapped = result.map(l => ({
-            ...l,
-            startTime: l.time,
-            endTime: l.time,
-            count: 1
-        }));
 
         if (!compactMode) {
-            return mapped;
+            return result; // Skip expensive mapping if not compacting
         }
 
         const compacted: any[] = [];
         let current: any = null;
 
-        for (const log of mapped) {
+        for (const log of result) {
             if (!current) {
-                current = { ...log };
+                current = { 
+                    ...log, 
+                    count: 1, 
+                    startLine: log.lineNum, 
+                    endLine: log.lineNum,
+                    startTime: log.time,
+                    endTime: log.time 
+                };
                 compacted.push(current);
             } else {
                 if (current.tag === log.tag && current.message === log.message) {
                     current.count++;
                     if (log.time) current.endTime = log.time;
+                    current.endLine = log.lineNum;
                 } else {
-                    current = { ...log };
+                    current = { 
+                        ...log, 
+                        count: 1, 
+                        startLine: log.lineNum, 
+                        endLine: log.lineNum,
+                        startTime: log.time,
+                        endTime: log.time 
+                    };
                     compacted.push(current);
                 }
             }
@@ -71,25 +81,34 @@ function App() {
     };
 
     const handleSelectFile = async (file: main.FileInfo) => {
+        activeFilePathRef.current = file.path; // Instantly abort any active loops
+        
         setActiveFile(file);
         setLogs([]); // Clear while loading
-        setIsLoadingHistory(false); // Cancel any previous loading
+        setIsLoadingHistory(false);
         setAutoScroll(true); // Re-enable auto-scroll on new file
         setFirstItemIndex(1000000); // Reset index for new file
+        
         await StartTailing(file.path);
+        
+        const currentPath = file.path;
         const initial = await LoadPreviousChunk();
+        
+        if (activeFilePathRef.current !== currentPath) return; // User clicked another file while waiting
+        
         setLogs(initial || []);
         setIsLoadingHistory(true); // Start auto-loading the rest of the file
     };
 
     // Auto-loader for background history
     useEffect(() => {
-        if (!isLoadingHistory) return;
+        if (!isLoadingHistory || !activeFile) return;
         
         let active = true;
+        const currentPath = activeFile.path;
         
         const loadRemaining = async () => {
-            while (active) {
+            while (active && activeFilePathRef.current === currentPath) {
                 if (isLoadingMore.current) {
                     await new Promise(r => setTimeout(r, 50));
                     continue;
@@ -99,25 +118,25 @@ function App() {
                 const chunk = await LoadPreviousChunk();
                 isLoadingMore.current = false;
                 
+                if (!active || activeFilePathRef.current !== currentPath) break;
+                
                 if (!chunk || chunk.length === 0) {
-                    if (active) setIsLoadingHistory(false);
+                    setIsLoadingHistory(false);
                     break;
                 }
                 
-                if (active) {
-                    setLogs(prev => [...chunk, ...prev]);
-                    setFirstItemIndex(prev => prev - chunk.length);
-                }
+                setLogs(prev => [...chunk, ...prev]);
+                setFirstItemIndex(prev => prev - chunk.length);
                 
                 // Yield to browser to prevent UI freeze
-                await new Promise(r => setTimeout(r, 20));
+                await new Promise(r => setTimeout(r, 30));
             }
         };
         
         loadRemaining();
         
         return () => { active = false; };
-    }, [isLoadingHistory]);
+    }, [isLoadingHistory, activeFile]);
 
     const loadMoreHistory = async () => {
         // If the auto-loader is already running, let it do the work
@@ -182,6 +201,9 @@ function App() {
                         <div className="menu-dropdown-item" onClick={() => setCompactMode(!compactMode)}>
                             <span style={{ width: '20px' }}>{compactMode ? '✓' : ''}</span> Compact Mode
                         </div>
+                        <div className="menu-dropdown-item" onClick={() => setShowLineNumbers(!showLineNumbers)}>
+                            <span style={{ width: '20px' }}>{showLineNumbers ? '✓' : ''}</span> Line Numbers
+                        </div>
                     </div>
                 </div>
             </div>
@@ -236,6 +258,7 @@ function App() {
                                 }}
                                 fixedHeaderContent={() => (
                                     <tr style={{ background: 'var(--bg-dark)' }}>
+                                        {showLineNumbers && <th className={compactMode ? "col-line-expanded" : "col-line"}>Line</th>}
                                         <th className={compactMode ? "col-time-expanded" : "col-time"}>Time</th>
                                         <th className="col-tag">Tag</th>
                                         <th className="col-msg">Message</th>
@@ -244,8 +267,13 @@ function App() {
                                 )}
                                 itemContent={(index, log) => (
                                     <>
+                                        {showLineNumbers && (
+                                            <td className={compactMode ? "col-line-expanded" : "col-line"}>
+                                                {compactMode && log.count > 1 ? `${log.startLine} - ${log.endLine}` : log.lineNum}
+                                            </td>
+                                        )}
                                         <td className={compactMode ? "col-time-expanded" : "col-time"}>
-                                            {log.count > 1 ? `${log.startTime} - ${log.endTime}` : log.startTime}
+                                            {compactMode && log.count > 1 ? `${log.startTime} - ${log.endTime}` : log.time}
                                         </td>
                                         <td className="col-tag">{log.tag}</td>
                                         <td className="col-msg">{log.message || log.raw}</td>
