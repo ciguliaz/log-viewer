@@ -8,6 +8,8 @@ export function ListFiles(arg1:string):Promise<Array<main.FileInfo>>;
 
 export function LoadPreviousChunk():Promise<Array<main.LogEntry>>;
 
+export function ProcessDrop(arg1:string):Promise<main.DropResult>;
+
 export function SelectFolder():Promise<string>;
 
 export function StartTailing(arg1:string):Promise<void>;

@@ -14,6 +14,10 @@ export function LoadPreviousChunk() {
   return window['go']['main']['App']['LoadPreviousChunk']();
 }
 
+export function ProcessDrop(arg1) {
+  return window['go']['main']['App']['ProcessDrop'](arg1);
+}
+
 export function SelectFolder() {
   return window['go']['main']['App']['SelectFolder']();
 }

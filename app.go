@@ -129,6 +129,36 @@ func (a *App) ListFiles(dirPath string) []FileInfo {
 	return files
 }
 
+type DropResult struct {
+	Path  string     `json:"path"`
+	Name  string     `json:"name"`
+	Files []FileInfo `json:"files"`
+}
+
+func (a *App) ProcessDrop(path string) *DropResult {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil
+	}
+
+	dir := path
+	if !info.IsDir() {
+		dir = filepath.Dir(path)
+	}
+
+	files := a.ListFiles(dir)
+	name := filepath.Base(dir)
+	if name == "" || name == "." {
+		name = dir
+	}
+
+	return &DropResult{
+		Path:  dir,
+		Name:  name,
+		Files: files,
+	}
+}
+
 // StartTailing stops any existing tail and starts tailing a new file
 func (a *App) StartTailing(filePath string) {
 	a.mu.Lock()

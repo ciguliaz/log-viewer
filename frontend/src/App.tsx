@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import './App.css';
 import { EventsOn } from '../wailsjs/runtime/runtime';
-import { SelectFolder, ListFiles, StartTailing, LoadPreviousChunk } from '../wailsjs/go/main/App';
+import { SelectFolder, ListFiles, StartTailing, LoadPreviousChunk, ProcessDrop } from '../wailsjs/go/main/App';
 import { main } from '../wailsjs/go/models';
 import { TableVirtuoso, TableVirtuosoHandle } from 'react-virtuoso';
 
@@ -164,7 +164,7 @@ function App() {
                 setFirstItemIndex(prev => prev - chunk.length);
                 
                 // Yield to browser to prevent UI freeze
-                await new Promise(r => setTimeout(r, 30));
+                await new Promise(r => setTimeout(r, 100));
             }
         };
         
@@ -190,6 +190,40 @@ function App() {
     };
 
     useEffect(() => {
+        const preventDefault = (e: Event) => {
+            e.preventDefault();
+            e.stopPropagation();
+        };
+        window.addEventListener('dragover', preventDefault);
+        window.addEventListener('drop', preventDefault);
+
+        // Handle drag and drop via Wails native event (requires --wails-drop-target: drop in CSS)
+        EventsOn('wails:file-drop', async (...args: any[]) => {
+            // Wails may pass (paths) or (x, y, paths) depending on version
+            let paths: string[] = [];
+            if (Array.isArray(args[0])) {
+                paths = args[0];
+            } else if (args.length >= 3 && Array.isArray(args[2])) {
+                paths = args[2];
+            }
+            if (!paths || paths.length === 0) return;
+            
+            for (const path of paths) {
+                const dropResult = await ProcessDrop(path);
+                if (dropResult) {
+                    setWorkspaces(prev => {
+                        if (prev.some(w => w.path === dropResult.path)) return prev;
+                        return [...prev, {
+                            path: dropResult.path,
+                            name: dropResult.name,
+                            files: dropResult.files || []
+                        }];
+                    });
+                    setExpandedFolders(prev => new Set(prev).add(dropResult.path));
+                }
+            }
+        });
+
         // Listen for live updates (Delta payloads)
         EventsOn('log_update', (update: any) => {
             setLogs(prev => {
@@ -203,6 +237,11 @@ function App() {
                 return next;
             });
         });
+
+        return () => {
+            window.removeEventListener('dragover', preventDefault);
+            window.removeEventListener('drop', preventDefault);
+        };
     }, []);
 
     // Auto-scroll logic

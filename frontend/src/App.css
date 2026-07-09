@@ -26,6 +26,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  --wails-drop-target: drop;
 }
 
 .menu-bar {
