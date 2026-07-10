@@ -16,9 +16,28 @@ function App() {
     
     const [activeFile, setActiveFile] = useState<main.FileInfo | null>(null);
     const [logs, setLogs] = useState<main.LogEntry[]>([]);
-    const [showLineNumbers, setShowLineNumbers] = useState<boolean>(true);
-    const [showLevel, setShowLevel] = useState<boolean>(true);
-    const [compactMode, setCompactMode] = useState<boolean>(false);
+    
+    // View settings persistence
+    const initialSettings = useMemo(() => {
+        try {
+            const saved = localStorage.getItem('viewSettings');
+            if (saved) return JSON.parse(saved);
+        } catch (e) {}
+        return null;
+    }, []);
+    
+    const [showLineNumbers, setShowLineNumbers] = useState<boolean>(initialSettings?.showLineNumbers ?? true);
+    const [showLevel, setShowLevel] = useState<boolean>(initialSettings?.showLevel ?? true);
+    const [compactMode, setCompactMode] = useState<boolean>(initialSettings?.compactMode ?? false);
+    
+    useEffect(() => {
+        localStorage.setItem('viewSettings', JSON.stringify({
+            compactMode,
+            showLineNumbers,
+            showLevel
+        }));
+    }, [compactMode, showLineNumbers, showLevel]);
+
     const [searchTerm, setSearchTerm] = useState<string>('');
     const [autoScroll, setAutoScroll] = useState<boolean>(true);
     const [firstItemIndex, setFirstItemIndex] = useState<number>(1000000);
