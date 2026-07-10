@@ -339,6 +339,11 @@ func (a *App) parseSingleLine(text string, isShadow bool) LogEntry {
 		} else if matches := kvTimeRegex.FindStringSubmatch(msg); len(matches) > 1 {
 			rawTime = matches[1]
 			msg = kvTimeRegex.ReplaceAllString(msg, "")
+		} else {
+			if loc := timeSplitRegex.FindStringIndex(msg); loc != nil {
+				rawTime = strings.TrimSpace(msg[loc[0]:loc[1]])
+				msg = strings.TrimSpace(msg[loc[1]:])
+			}
 		}
 		
 		if rawTime != "" {
@@ -390,6 +395,20 @@ func (a *App) parseSingleLine(text string, isShadow bool) LogEntry {
 				}
 			} else {
 				break // Does not start with a bracket
+			}
+		}
+
+		// Step 4.5: Check for unbracketed level prefixes like "Warning:" or "ERROR:"
+		if entry.Level == "" {
+			spaceIdx := strings.Index(msg, " ")
+			if spaceIdx > 0 {
+				firstWord := msg[:spaceIdx]
+				cleanWord := strings.TrimRight(firstWord, ":-")
+				lowerWord := strings.ToLower(cleanWord)
+				if lowerWord == "info" || lowerWord == "error" || lowerWord == "warn" || lowerWord == "warning" || lowerWord == "debug" || lowerWord == "fatal" || lowerWord == "trace" {
+					entry.Level = cleanWord
+					msg = strings.TrimSpace(msg[spaceIdx:])
+				}
 			}
 		}
 
