@@ -298,49 +298,66 @@ func (a *App) parseSingleLine(text string, isShadow bool) LogEntry {
 			entry.Message = text
 		}
 	} else {
-		// Try bracket parse `[YYYY-MM-DD HH:MM:SS] Message`
-		if matches := bracketRegex.FindStringSubmatch(text); len(matches) >= 3 {
+		msg := text
+
+		// Step 1: Extract Time
+		if matches := bracketRegex.FindStringSubmatch(msg); len(matches) >= 3 {
 			entry.Time = matches[1]
-			msg := matches[2]
-			if m := kvLevelRegex.FindStringSubmatch(msg); len(m) > 1 {
-				entry.Level = m[1]
-				msg = kvLevelRegex.ReplaceAllString(msg, "")
-			}
-			entry.Message = strings.TrimSpace(msg)
-		} else if matches := pythonRegex.FindStringSubmatch(text); len(matches) >= 3 {
-			// Try python style `YYYY-MM-DD HH:MM:SS,mmm - Message`
+			msg = matches[2]
+		} else if matches := pythonRegex.FindStringSubmatch(msg); len(matches) >= 3 {
 			entry.Time = matches[1]
-			msg := matches[2]
-			if m := kvLevelRegex.FindStringSubmatch(msg); len(m) > 1 {
-				entry.Level = m[1]
-				msg = kvLevelRegex.ReplaceAllString(msg, "")
-			}
-			entry.Message = strings.TrimSpace(msg)
-		} else if matches := kvTimeRegex.FindStringSubmatch(text); len(matches) > 1 {
-			// Try key-value parse like time="2026-07-08T16:40:38+07:00"
+			msg = matches[2]
+		} else if matches := kvTimeRegex.FindStringSubmatch(msg); len(matches) > 1 {
 			entry.Time = matches[1]
-			
-			if m := kvTagRegex.FindStringSubmatch(text); len(m) > 1 {
-				entry.Tag = m[1]
-			}
-			
-			if m := kvLevelRegex.FindStringSubmatch(text); len(m) > 1 {
-				entry.Level = m[1]
-			}
-			
-			// Remove the time, tag, and level segments from the message since they are displayed in other columns
-			cleanMsg := kvTimeRegex.ReplaceAllString(text, "")
-			cleanMsg = kvTagRegex.ReplaceAllString(cleanMsg, "")
-			cleanMsg = kvLevelRegex.ReplaceAllString(cleanMsg, "")
-			entry.Message = strings.TrimSpace(cleanMsg)
-		} else {
-			// If not a key-value format, but maybe still has level=info somewhere
-			if m := kvLevelRegex.FindStringSubmatch(text); len(m) > 1 {
-				entry.Level = m[1]
-				text = kvLevelRegex.ReplaceAllString(text, "")
-			}
-			entry.Message = strings.TrimSpace(text)
+			msg = kvTimeRegex.ReplaceAllString(msg, "")
 		}
+
+		// Step 2: Extract explicit Key-Value metadata
+		if m := kvLevelRegex.FindStringSubmatch(msg); len(m) > 1 {
+			entry.Level = m[1]
+			msg = kvLevelRegex.ReplaceAllString(msg, "")
+		}
+		if m := kvTagRegex.FindStringSubmatch(msg); len(m) > 1 {
+			entry.Tag = m[1]
+			msg = kvTagRegex.ReplaceAllString(msg, "")
+		}
+
+		msg = strings.TrimSpace(msg)
+
+		// Step 3 & 4: Extract preset levels and remaining leading brackets
+		for i := 0; i < 2; i++ {
+			if strings.HasPrefix(msg, "[") {
+				endIdx := strings.Index(msg, "]")
+				if endIdx > 0 {
+					content := msg[1:endIdx]
+					
+					isLevel := false
+					lowerContent := strings.ToLower(content)
+					if lowerContent == "info" || lowerContent == "error" || lowerContent == "warn" || lowerContent == "warning" || lowerContent == "debug" || lowerContent == "fatal" || lowerContent == "trace" {
+						isLevel = true
+					}
+					
+					if isLevel && entry.Level == "" {
+						entry.Level = content
+					} else if entry.Tag == "" {
+						entry.Tag = content
+					} else {
+						// Both Level and Tag are filled, stop stripping brackets
+						break
+					}
+					
+					// Consume the bracket from the message
+					msg = strings.TrimSpace(msg[endIdx+1:])
+				} else {
+					break // No matching end bracket found
+				}
+			} else {
+				break // Does not start with a bracket
+			}
+		}
+
+		// Step 5: Finalize Message
+		entry.Message = strings.TrimSpace(msg)
 	}
 	
 	entry.EndTime = entry.Time
