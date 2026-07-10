@@ -263,6 +263,16 @@ tr:hover td {
     width: 380px;
     color: var(--accent);
 }
+.col-level { width: 70px; text-align: left; }
+.level-badge {
+    font-weight: bold;
+    text-transform: uppercase;
+}
+.level-info { color: #4ec9b0; }
+.level-error { color: #f48771; }
+.level-warn { color: #dcdcaa; }
+.level-debug { color: #858585; }
+
 .col-tag { width: 100px; color: #4ec9b0; }
 .col-msg { 
     color: #ce9178; 

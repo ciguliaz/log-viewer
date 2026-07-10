@@ -198,6 +198,7 @@ var (
 	pythonRegex  = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})\s+-\s+(.*)$`)
 	kvTimeRegex  = regexp.MustCompile(`time="?([^"\s]+)"?`)
 	kvTagRegex   = regexp.MustCompile(`tag="?([^"\s]+)"?`)
+	kvLevelRegex = regexp.MustCompile(`level="?([^"\s]+)"?`)
 )
 
 func countLinesFast(filePath string) int64 {
@@ -300,11 +301,21 @@ func (a *App) parseSingleLine(text string, isShadow bool) LogEntry {
 		// Try bracket parse `[YYYY-MM-DD HH:MM:SS] Message`
 		if matches := bracketRegex.FindStringSubmatch(text); len(matches) >= 3 {
 			entry.Time = matches[1]
-			entry.Message = matches[2]
+			msg := matches[2]
+			if m := kvLevelRegex.FindStringSubmatch(msg); len(m) > 1 {
+				entry.Level = m[1]
+				msg = kvLevelRegex.ReplaceAllString(msg, "")
+			}
+			entry.Message = strings.TrimSpace(msg)
 		} else if matches := pythonRegex.FindStringSubmatch(text); len(matches) >= 3 {
 			// Try python style `YYYY-MM-DD HH:MM:SS,mmm - Message`
 			entry.Time = matches[1]
-			entry.Message = matches[2]
+			msg := matches[2]
+			if m := kvLevelRegex.FindStringSubmatch(msg); len(m) > 1 {
+				entry.Level = m[1]
+				msg = kvLevelRegex.ReplaceAllString(msg, "")
+			}
+			entry.Message = strings.TrimSpace(msg)
 		} else if matches := kvTimeRegex.FindStringSubmatch(text); len(matches) > 1 {
 			// Try key-value parse like time="2026-07-08T16:40:38+07:00"
 			entry.Time = matches[1]
@@ -313,12 +324,22 @@ func (a *App) parseSingleLine(text string, isShadow bool) LogEntry {
 				entry.Tag = m[1]
 			}
 			
-			// Remove the time and tag segments from the message since they are displayed in other columns
+			if m := kvLevelRegex.FindStringSubmatch(text); len(m) > 1 {
+				entry.Level = m[1]
+			}
+			
+			// Remove the time, tag, and level segments from the message since they are displayed in other columns
 			cleanMsg := kvTimeRegex.ReplaceAllString(text, "")
 			cleanMsg = kvTagRegex.ReplaceAllString(cleanMsg, "")
+			cleanMsg = kvLevelRegex.ReplaceAllString(cleanMsg, "")
 			entry.Message = strings.TrimSpace(cleanMsg)
 		} else {
-			entry.Message = text
+			// If not a key-value format, but maybe still has level=info somewhere
+			if m := kvLevelRegex.FindStringSubmatch(text); len(m) > 1 {
+				entry.Level = m[1]
+				text = kvLevelRegex.ReplaceAllString(text, "")
+			}
+			entry.Message = strings.TrimSpace(text)
 		}
 	}
 	

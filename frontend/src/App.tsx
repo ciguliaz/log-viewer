@@ -16,8 +16,9 @@ function App() {
     
     const [activeFile, setActiveFile] = useState<main.FileInfo | null>(null);
     const [logs, setLogs] = useState<main.LogEntry[]>([]);
-    const [compactMode, setCompactMode] = useState<boolean>(false);
     const [showLineNumbers, setShowLineNumbers] = useState<boolean>(true);
+    const [showLevel, setShowLevel] = useState<boolean>(true);
+    const [compactMode, setCompactMode] = useState<boolean>(false);
     const [searchTerm, setSearchTerm] = useState<string>('');
     const [autoScroll, setAutoScroll] = useState<boolean>(true);
     const [firstItemIndex, setFirstItemIndex] = useState<number>(1000000);
@@ -322,6 +323,9 @@ function App() {
                         <div className="menu-dropdown-item" onClick={() => setShowLineNumbers(!showLineNumbers)}>
                             <span style={{ width: '20px' }}>{showLineNumbers ? '✓' : ''}</span> Line Numbers
                         </div>
+                        <div className="menu-dropdown-item" onClick={() => setShowLevel(!showLevel)}>
+                            <span style={{ width: '20px' }}>{showLevel ? '✓' : ''}</span> Show Level
+                        </div>
                     </div>
                 </div>
             </div>
@@ -392,6 +396,7 @@ function App() {
                                     <tr style={{ background: 'var(--bg-dark)' }}>
                                         {showLineNumbers && <th className={compactMode ? "col-line-expanded" : "col-line"}>Line</th>}
                                         <th className={compactMode ? "col-time-expanded" : "col-time"}>Time</th>
+                                        {showLevel && <th className="col-level">Level</th>}
                                         <th className="col-tag">Tag</th>
                                         <th className="col-msg">Message</th>
                                         {compactMode && <th className="col-count">Count</th>}
@@ -407,6 +412,15 @@ function App() {
                                         <td className={compactMode ? "col-time-expanded" : "col-time"}>
                                             {compactMode && log.count > 1 ? `${log.startTime} - ${log.endTime}` : log.time}
                                         </td>
+                                        {showLevel && (
+                                            <td className="col-level">
+                                                {log.level ? (
+                                                    <span className={`level-badge level-${log.level.toLowerCase()}`}>
+                                                        {log.level}
+                                                    </span>
+                                                ) : ''}
+                                            </td>
+                                        )}
                                         <td className="col-tag">{log.tag}</td>
                                         <td className="col-msg">{log.message || log.raw}</td>
                                         {compactMode && <td className="col-count">{log.count > 1 ? log.count : ''}</td>}
