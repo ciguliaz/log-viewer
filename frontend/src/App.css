@@ -314,6 +314,21 @@ th {
     white-space: nowrap;
 }
 
+.resizer {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 11;
+}
+
+.resizer:hover, .resizer:active {
+    background-color: var(--accent);
+    opacity: 0.5;
+}
+
 tr:hover td {
     background-color: var(--bg-hover);
 }

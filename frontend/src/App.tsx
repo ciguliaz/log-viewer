@@ -93,6 +93,18 @@ function App() {
     const [showTimezone, setShowTimezone] = useState<boolean>(initialSettings?.showTimezone ?? false);
     const [compactMode, setCompactMode] = useState<boolean>(initialSettings?.compactMode ?? false);
     
+    const [columnWidths, setColumnWidths] = useState<Record<string, number>>(initialSettings?.columnWidths ?? {
+        line: 60,
+        lineCompact: 100,
+        date: 90,
+        dateCompact: 190,
+        time: 180,
+        timeCompact: 380,
+        level: 70,
+        tag: 100,
+        count: 60
+    });
+    
     useEffect(() => {
         localStorage.setItem('viewSettings', JSON.stringify({
             compactMode,
@@ -100,14 +112,14 @@ function App() {
             showDate,
             showLevel,
             showMilliseconds,
-            showTimezone
+            showTimezone,
+            columnWidths
         }));
-    }, [compactMode, showLineNumbers, showDate, showLevel, showMilliseconds, showTimezone]);
+    }, [compactMode, showLineNumbers, showDate, showLevel, showMilliseconds, showTimezone, columnWidths]);
 
     const [searchTerm, setSearchTerm] = useState<string>('');
     const [autoScroll, setAutoScroll] = useState<boolean>(true);
     const [firstItemIndex, setFirstItemIndex] = useState<number>(1000000);
-    const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
     const isLoadingMore = useRef(false);
     const activeFilePathRef = useRef<string | null>(null);
     const isInitialMount = useRef(true);
@@ -264,7 +276,6 @@ function App() {
         
         setActiveFile(file);
         setLogs([]); // Clear while loading
-        setIsLoadingHistory(false);
         setAutoScroll(true); // Re-enable auto-scroll on new file
         setFirstItemIndex(1000000); // Reset index for new file
         
@@ -276,50 +287,10 @@ function App() {
         if (activeFilePathRef.current !== currentPath) return; // User clicked another file while waiting
         
         setLogs(initial || []);
-        setIsLoadingHistory(true); // Start auto-loading the rest of the file
     };
 
-    // Auto-loader for background history
-    useEffect(() => {
-        if (!isLoadingHistory || !activeFile) return;
-        
-        let active = true;
-        const currentPath = activeFile.path;
-        
-        const loadRemaining = async () => {
-            while (active && activeFilePathRef.current === currentPath) {
-                if (isLoadingMore.current) {
-                    await new Promise(r => setTimeout(r, 50));
-                    continue;
-                }
-                
-                isLoadingMore.current = true;
-                const chunk = await LoadPreviousChunk();
-                isLoadingMore.current = false;
-                
-                if (!active || activeFilePathRef.current !== currentPath) break;
-                
-                if (!chunk || chunk.length === 0) {
-                    setIsLoadingHistory(false);
-                    break;
-                }
-                
-                setLogs(prev => [...chunk, ...prev]);
-                setFirstItemIndex(prev => prev - chunk.length);
-                
-                // Yield to browser to prevent UI freeze
-                await new Promise(r => setTimeout(r, 100));
-            }
-        };
-        
-        loadRemaining();
-        
-        return () => { active = false; };
-    }, [isLoadingHistory, activeFile]);
-
     const loadMoreHistory = async () => {
-        // If the auto-loader is already running, let it do the work
-        if (isLoadingHistory || isLoadingMore.current) return;
+        if (isLoadingMore.current) return;
         
         isLoadingMore.current = true;
         try {
@@ -524,17 +495,71 @@ function App() {
                                 atBottomStateChange={(atBottom) => {
                                     setAutoScroll(atBottom);
                                 }}
-                                fixedHeaderContent={() => (
-                                    <tr style={{ background: 'var(--bg-dark)' }}>
-                                        {showLineNumbers && <th className={compactMode ? "col-line-expanded" : "col-line"}>Line</th>}
-                                        {showDate && <th className={compactMode ? "col-date-expanded" : "col-date"}>Date</th>}
-                                        <th className={compactMode ? "col-time-expanded" : "col-time"}>Time</th>
-                                        {showLevel && <th className="col-level">Level</th>}
-                                        <th className="col-tag">Tag</th>
-                                        <th className="col-msg">Message</th>
-                                        {compactMode && <th className="col-count">Count</th>}
-                                    </tr>
-                                )}
+                                fixedHeaderContent={() => {
+                                    const handleResize = (colKey: string, delta: number) => {
+                                        setColumnWidths(prev => ({
+                                            ...prev,
+                                            [colKey]: Math.max(30, prev[colKey] + delta)
+                                        }));
+                                    };
+
+                                    const Resizer = ({ colKey }: { colKey: string }) => (
+                                        <div 
+                                            className="resizer" 
+                                            onMouseDown={(e) => {
+                                                e.preventDefault();
+                                                const startX = e.clientX;
+                                                const startWidth = columnWidths[colKey];
+                                                
+                                                const onMouseMove = (moveEvent: MouseEvent) => {
+                                                    const delta = moveEvent.clientX - startX;
+                                                    setColumnWidths(prev => ({ ...prev, [colKey]: Math.max(30, startWidth + delta) }));
+                                                };
+                                                
+                                                const onMouseUp = () => {
+                                                    document.removeEventListener('mousemove', onMouseMove);
+                                                    document.removeEventListener('mouseup', onMouseUp);
+                                                };
+                                                
+                                                document.addEventListener('mousemove', onMouseMove);
+                                                document.addEventListener('mouseup', onMouseUp);
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                        />
+                                    );
+
+                                    return (
+                                        <tr style={{ background: 'var(--bg-dark)' }}>
+                                            {showLineNumbers && (
+                                                <th style={{ width: compactMode ? columnWidths.lineCompact : columnWidths.line, position: 'relative' }} className={compactMode ? "col-line-expanded" : "col-line"}>
+                                                    Line <Resizer colKey={compactMode ? "lineCompact" : "line"} />
+                                                </th>
+                                            )}
+                                            {showDate && (
+                                                <th style={{ width: compactMode ? columnWidths.dateCompact : columnWidths.date, position: 'relative' }} className={compactMode ? "col-date-expanded" : "col-date"}>
+                                                    Date <Resizer colKey={compactMode ? "dateCompact" : "date"} />
+                                                </th>
+                                            )}
+                                            <th style={{ width: compactMode ? columnWidths.timeCompact : columnWidths.time, position: 'relative' }} className={compactMode ? "col-time-expanded" : "col-time"}>
+                                                Time <Resizer colKey={compactMode ? "timeCompact" : "time"} />
+                                            </th>
+                                            {showLevel && (
+                                                <th style={{ width: columnWidths.level, position: 'relative' }} className="col-level">
+                                                    Level <Resizer colKey="level" />
+                                                </th>
+                                            )}
+                                            <th style={{ width: columnWidths.tag, position: 'relative' }} className="col-tag">
+                                                Tag <Resizer colKey="tag" />
+                                            </th>
+                                            <th className="col-msg">Message</th>
+                                            {compactMode && (
+                                                <th style={{ width: columnWidths.count, position: 'relative' }} className="col-count">
+                                                    Count <Resizer colKey="count" />
+                                                </th>
+                                            )}
+                                        </tr>
+                                    );
+                                }}
                                 itemContent={(index, log: any) => {
                                     const formatTime = (time: string, ms: string, tz: string) => {
                                         let res = time || '';
@@ -551,20 +576,20 @@ function App() {
                                     return (
                                         <>
                                             {showLineNumbers && (
-                                                <td className={compactMode ? "col-line-expanded" : "col-line"}>
+                                                <td style={{ width: compactMode ? columnWidths.lineCompact : columnWidths.line }} className={compactMode ? "col-line-expanded" : "col-line"}>
                                                     {compactMode && log.count > 1 ? `${log.startLine} - ${log.endLine}` : log.lineNum}
                                                 </td>
                                             )}
                                             {showDate && (
-                                                <td className={compactMode ? "col-date-expanded" : "col-date"}>
+                                                <td style={{ width: compactMode ? columnWidths.dateCompact : columnWidths.date }} className={compactMode ? "col-date-expanded" : "col-date"}>
                                                     {compactMode && log.count > 1 ? (startDate === endDate ? startDate : `${startDate} - ${endDate}`) : startDate}
                                                 </td>
                                             )}
-                                            <td className={compactMode ? "col-time-expanded" : "col-time"}>
+                                            <td style={{ width: compactMode ? columnWidths.timeCompact : columnWidths.time }} className={compactMode ? "col-time-expanded" : "col-time"}>
                                                 {compactMode && log.count > 1 ? `${startStr} - ${endStr}` : startStr}
                                             </td>
                                             {showLevel && (
-                                                <td className="col-level">
+                                                <td style={{ width: columnWidths.level }} className="col-level">
                                                     {log.level ? (
                                                         <span className={`level-badge level-${log.level.toLowerCase()}`}>
                                                             {log.level}
@@ -572,11 +597,11 @@ function App() {
                                                     ) : ''}
                                                 </td>
                                             )}
-                                            <td className="col-tag">{log.tag}</td>
+                                            <td style={{ width: columnWidths.tag }} className="col-tag">{log.tag}</td>
                                             <td className="col-msg">
                                                 <MessageCell text={log.message || log.raw} />
                                             </td>
-                                            {compactMode && <td className="col-count">{log.count > 1 ? log.count : ''}</td>}
+                                            {compactMode && <td style={{ width: columnWidths.count }} className="col-count">{log.count > 1 ? log.count : ''}</td>}
                                         </>
                                     );
                                 }}
