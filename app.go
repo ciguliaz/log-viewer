@@ -19,12 +19,18 @@ import (
 
 type LogEntry struct {
 	Id      string `json:"id"`
+	Date    string `json:"date"`
 	Time    string `json:"time"`
+	Ms      string `json:"ms"`
+	Tz      string `json:"tz"`
 	Level   string `json:"level"`
 	Tag     string `json:"tag"`
 	Message string `json:"message"`
 	Raw     string `json:"raw"`
+	EndDate string `json:"endDate"`
 	EndTime string `json:"endTime"`
+	EndMs   string `json:"endMs"`
+	EndTz   string `json:"endTz"`
 	Count   int    `json:"count"`
 	LineNum int64  `json:"lineNum"`
 }
@@ -199,7 +205,25 @@ var (
 	kvTimeRegex  = regexp.MustCompile(`time="?([^"\s]+)"?`)
 	kvTagRegex   = regexp.MustCompile(`tag="?([^"\s]+)"?`)
 	kvLevelRegex = regexp.MustCompile(`level="?([^"\s]+)"?`)
+	timeSplitRegex = regexp.MustCompile(`^(\d{4}[-/]\d{2}[-/]\d{2})\s+(\d{2}:\d{2}:\d{2})(?:[,.](\d+))?\s*(Z|[+-]\d{2}:?\d{2})?`)
 )
+
+func parseTimeComponents(rawTime string) (date, timePart, ms, tz string) {
+	// Normalize T delimiter from ISO format to space for regex matching
+	t := strings.Replace(rawTime, "T", " ", 1)
+	
+	matches := timeSplitRegex.FindStringSubmatch(t)
+	if len(matches) > 0 {
+		date = matches[1]
+		timePart = matches[2]
+		ms = matches[3]
+		tz = matches[4]
+	} else {
+		// Fallback if it doesn't strictly match the expected YYYY-MM-DD HH:MM:SS format
+		timePart = rawTime
+	}
+	return
+}
 
 func countLinesFast(filePath string) int64 {
 	file, err := os.Open(filePath)
@@ -291,7 +315,11 @@ func (a *App) parseSingleLine(text string, isShadow bool) LogEntry {
 	if isShadow {
 		matches := shadowRegex.FindStringSubmatch(text)
 		if len(matches) >= 8 {
-			entry.Time = matches[1]
+			d, t, ms, tz := parseTimeComponents(matches[1])
+			entry.Date = d
+			entry.Time = t
+			entry.Ms = ms
+			entry.Tz = tz
 			entry.Tag = matches[2]
 			entry.Message = fmt.Sprintf("%s hash=%s :%s → %s → %s", matches[3], matches[4], matches[5], matches[6], matches[7])
 		} else {
@@ -301,15 +329,24 @@ func (a *App) parseSingleLine(text string, isShadow bool) LogEntry {
 		msg := text
 
 		// Step 1: Extract Time
+		rawTime := ""
 		if matches := bracketRegex.FindStringSubmatch(msg); len(matches) >= 3 {
-			entry.Time = matches[1]
+			rawTime = matches[1]
 			msg = matches[2]
 		} else if matches := pythonRegex.FindStringSubmatch(msg); len(matches) >= 3 {
-			entry.Time = matches[1]
+			rawTime = matches[1]
 			msg = matches[2]
 		} else if matches := kvTimeRegex.FindStringSubmatch(msg); len(matches) > 1 {
-			entry.Time = matches[1]
+			rawTime = matches[1]
 			msg = kvTimeRegex.ReplaceAllString(msg, "")
+		}
+		
+		if rawTime != "" {
+			d, t, ms, tz := parseTimeComponents(rawTime)
+			entry.Date = d
+			entry.Time = t
+			entry.Ms = ms
+			entry.Tz = tz
 		}
 
 		// Step 2: Extract explicit Key-Value metadata
@@ -360,7 +397,10 @@ func (a *App) parseSingleLine(text string, isShadow bool) LogEntry {
 		entry.Message = strings.TrimSpace(msg)
 	}
 	
+	entry.EndDate = entry.Date
 	entry.EndTime = entry.Time
+	entry.EndMs = entry.Ms
+	entry.EndTz = entry.Tz
 	return entry
 }
 

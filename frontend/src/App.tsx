@@ -87,16 +87,22 @@ function App() {
     }, []);
     
     const [showLineNumbers, setShowLineNumbers] = useState<boolean>(initialSettings?.showLineNumbers ?? true);
+    const [showDate, setShowDate] = useState<boolean>(initialSettings?.showDate ?? true);
     const [showLevel, setShowLevel] = useState<boolean>(initialSettings?.showLevel ?? true);
+    const [showMilliseconds, setShowMilliseconds] = useState<boolean>(initialSettings?.showMilliseconds ?? false);
+    const [showTimezone, setShowTimezone] = useState<boolean>(initialSettings?.showTimezone ?? false);
     const [compactMode, setCompactMode] = useState<boolean>(initialSettings?.compactMode ?? false);
     
     useEffect(() => {
         localStorage.setItem('viewSettings', JSON.stringify({
             compactMode,
             showLineNumbers,
-            showLevel
+            showDate,
+            showLevel,
+            showMilliseconds,
+            showTimezone
         }));
-    }, [compactMode, showLineNumbers, showLevel]);
+    }, [compactMode, showLineNumbers, showDate, showLevel, showMilliseconds, showTimezone]);
 
     const [searchTerm, setSearchTerm] = useState<string>('');
     const [autoScroll, setAutoScroll] = useState<boolean>(true);
@@ -173,14 +179,25 @@ function App() {
                     count: 1, 
                     startLine: log.lineNum, 
                     endLine: log.lineNum,
+                    startDate: log.date,
                     startTime: log.time,
-                    endTime: log.time 
+                    startMs: log.ms,
+                    startTz: log.tz,
+                    endDate: log.date,
+                    endTime: log.time, 
+                    endMs: log.ms,
+                    endTz: log.tz
                 };
                 compacted.push(current);
             } else {
                 if (current.tag === log.tag && current.message === log.message) {
                     current.count++;
-                    if (log.time) current.endTime = log.time;
+                    if (log.time) {
+                        current.endDate = log.date;
+                        current.endTime = log.time;
+                        current.endMs = log.ms;
+                        current.endTz = log.tz;
+                    }
                     current.endLine = log.lineNum;
                 } else {
                     current = { 
@@ -188,8 +205,14 @@ function App() {
                         count: 1, 
                         startLine: log.lineNum, 
                         endLine: log.lineNum,
+                        startDate: log.date,
                         startTime: log.time,
-                        endTime: log.time 
+                        startMs: log.ms,
+                        startTz: log.tz,
+                        endDate: log.date,
+                        endTime: log.time, 
+                        endMs: log.ms,
+                        endTz: log.tz
                     };
                     compacted.push(current);
                 }
@@ -405,6 +428,20 @@ function App() {
                         <div className="menu-dropdown-item" onClick={() => setShowLevel(!showLevel)}>
                             <span style={{ width: '20px' }}>{showLevel ? '✓' : ''}</span> Show Level
                         </div>
+                        <div className="menu-dropdown-item menu-submenu-parent">
+                            <span style={{ width: '20px' }}></span> Time Format <span style={{ marginLeft: 'auto', fontSize: '10px' }}>▶</span>
+                            <div className="menu-submenu">
+                                <div className="menu-dropdown-item" onClick={(e) => { e.stopPropagation(); setShowDate(!showDate); }}>
+                                    <span style={{ width: '20px' }}>{showDate ? '✓' : ''}</span> Show Date
+                                </div>
+                                <div className="menu-dropdown-item" onClick={(e) => { e.stopPropagation(); setShowMilliseconds(!showMilliseconds); }}>
+                                    <span style={{ width: '20px' }}>{showMilliseconds ? '✓' : ''}</span> Show Milliseconds
+                                </div>
+                                <div className="menu-dropdown-item" onClick={(e) => { e.stopPropagation(); setShowTimezone(!showTimezone); }}>
+                                    <span style={{ width: '20px' }}>{showTimezone ? '✓' : ''}</span> Show Timezone
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 
@@ -490,6 +527,7 @@ function App() {
                                 fixedHeaderContent={() => (
                                     <tr style={{ background: 'var(--bg-dark)' }}>
                                         {showLineNumbers && <th className={compactMode ? "col-line-expanded" : "col-line"}>Line</th>}
+                                        {showDate && <th className={compactMode ? "col-date-expanded" : "col-date"}>Date</th>}
                                         <th className={compactMode ? "col-time-expanded" : "col-time"}>Time</th>
                                         {showLevel && <th className="col-level">Level</th>}
                                         <th className="col-tag">Tag</th>
@@ -497,32 +535,51 @@ function App() {
                                         {compactMode && <th className="col-count">Count</th>}
                                     </tr>
                                 )}
-                                itemContent={(index, log) => (
-                                    <>
-                                        {showLineNumbers && (
-                                            <td className={compactMode ? "col-line-expanded" : "col-line"}>
-                                                {compactMode && log.count > 1 ? `${log.startLine} - ${log.endLine}` : log.lineNum}
+                                itemContent={(index, log: any) => {
+                                    const formatTime = (time: string, ms: string, tz: string) => {
+                                        let res = time || '';
+                                        if (showMilliseconds && ms) res += `.${ms}`;
+                                        if (showTimezone && tz) res += tz;
+                                        return res;
+                                    };
+                                    
+                                    const startDate = log.startDate || log.date;
+                                    const endDate = log.endDate || log.date;
+                                    const startStr = formatTime(log.startTime || log.time, log.startMs || log.ms, log.startTz || log.tz);
+                                    const endStr = formatTime(log.endTime || log.time, log.endMs || log.ms, log.endTz || log.tz);
+
+                                    return (
+                                        <>
+                                            {showLineNumbers && (
+                                                <td className={compactMode ? "col-line-expanded" : "col-line"}>
+                                                    {compactMode && log.count > 1 ? `${log.startLine} - ${log.endLine}` : log.lineNum}
+                                                </td>
+                                            )}
+                                            {showDate && (
+                                                <td className={compactMode ? "col-date-expanded" : "col-date"}>
+                                                    {compactMode && log.count > 1 ? (startDate === endDate ? startDate : `${startDate} - ${endDate}`) : startDate}
+                                                </td>
+                                            )}
+                                            <td className={compactMode ? "col-time-expanded" : "col-time"}>
+                                                {compactMode && log.count > 1 ? `${startStr} - ${endStr}` : startStr}
                                             </td>
-                                        )}
-                                        <td className={compactMode ? "col-time-expanded" : "col-time"}>
-                                            {compactMode && log.count > 1 ? `${log.startTime} - ${log.endTime}` : log.time}
-                                        </td>
-                                        {showLevel && (
-                                            <td className="col-level">
-                                                {log.level ? (
-                                                    <span className={`level-badge level-${log.level.toLowerCase()}`}>
-                                                        {log.level}
-                                                    </span>
-                                                ) : ''}
+                                            {showLevel && (
+                                                <td className="col-level">
+                                                    {log.level ? (
+                                                        <span className={`level-badge level-${log.level.toLowerCase()}`}>
+                                                            {log.level}
+                                                        </span>
+                                                    ) : ''}
+                                                </td>
+                                            )}
+                                            <td className="col-tag">{log.tag}</td>
+                                            <td className="col-msg">
+                                                <MessageCell text={log.message || log.raw} />
                                             </td>
-                                        )}
-                                        <td className="col-tag">{log.tag}</td>
-                                        <td className="col-msg">
-                                            <MessageCell text={log.message || log.raw} />
-                                        </td>
-                                        {compactMode && <td className="col-count">{log.count > 1 ? log.count : ''}</td>}
-                                    </>
-                                )}
+                                            {compactMode && <td className="col-count">{log.count > 1 ? log.count : ''}</td>}
+                                        </>
+                                    );
+                                }}
                             />
                         </div>
                     </>

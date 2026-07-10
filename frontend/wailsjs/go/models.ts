@@ -51,12 +51,18 @@ export namespace main {
 	
 	export class LogEntry {
 	    id: string;
+	    date: string;
 	    time: string;
+	    ms: string;
+	    tz: string;
 	    level: string;
 	    tag: string;
 	    message: string;
 	    raw: string;
+	    endDate: string;
 	    endTime: string;
+	    endMs: string;
+	    endTz: string;
 	    count: number;
 	    lineNum: number;
 	
@@ -67,12 +73,18 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
+	        this.date = source["date"];
 	        this.time = source["time"];
+	        this.ms = source["ms"];
+	        this.tz = source["tz"];
 	        this.level = source["level"];
 	        this.tag = source["tag"];
 	        this.message = source["message"];
 	        this.raw = source["raw"];
+	        this.endDate = source["endDate"];
 	        this.endTime = source["endTime"];
+	        this.endMs = source["endMs"];
+	        this.endTz = source["endTz"];
 	        this.count = source["count"];
 	        this.lineNum = source["lineNum"];
 	    }
