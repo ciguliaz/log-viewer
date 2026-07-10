@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import './App.css';
-import { EventsOn } from '../wailsjs/runtime/runtime';
+import { EventsOn, WindowMinimise, WindowToggleMaximise, WindowIsMaximised, Quit } from '../wailsjs/runtime/runtime';
 import { SelectFolder, ListFiles, StartTailing, LoadPreviousChunk, ProcessDrop } from '../wailsjs/go/main/App';
 import { main } from '../wailsjs/go/models';
 import { TableVirtuoso, TableVirtuosoHandle } from 'react-virtuoso';
@@ -62,6 +62,21 @@ function App() {
     const [activeFile, setActiveFile] = useState<main.FileInfo | null>(null);
     const [logs, setLogs] = useState<main.LogEntry[]>([]);
     
+    // Window state for maximize button icon
+    const [isMaximized, setIsMaximized] = useState(false);
+    
+    useEffect(() => {
+        const checkMaximize = async () => {
+            const max = await WindowIsMaximised();
+            setIsMaximized(max);
+        };
+        
+        window.addEventListener('resize', checkMaximize);
+        checkMaximize();
+        
+        return () => window.removeEventListener('resize', checkMaximize);
+    }, []);
+
     // View settings persistence
     const initialSettings = useMemo(() => {
         try {
@@ -390,6 +405,22 @@ function App() {
                         <div className="menu-dropdown-item" onClick={() => setShowLevel(!showLevel)}>
                             <span style={{ width: '20px' }}>{showLevel ? '✓' : ''}</span> Show Level
                         </div>
+                    </div>
+                </div>
+                
+                <div className="window-controls">
+                    <div className="window-control" onClick={() => WindowMinimise()}>
+                        <svg width="12" height="12" viewBox="0 0 12 12"><rect fill="currentColor" width="10" height="1" x="1" y="6"></rect></svg>
+                    </div>
+                    <div className="window-control" onClick={() => WindowToggleMaximise()}>
+                        {isMaximized ? (
+                            <svg width="12" height="12" viewBox="0 0 12 12"><path fill="currentColor" fillRule="evenodd" d="M2.5 4.5v5h5v-5h-5zm-1-1h7v7h-7v-7zm6.5-1h-5v-1h7v7h-1v-5h-1v-1z"></path></svg>
+                        ) : (
+                            <svg width="12" height="12" viewBox="0 0 12 12"><rect width="9" height="9" x="1.5" y="1.5" fill="none" stroke="currentColor"></rect></svg>
+                        )}
+                    </div>
+                    <div className="window-control close" onClick={() => Quit()}>
+                        <svg width="12" height="12" viewBox="0 0 12 12"><polygon fill="currentColor" fillRule="evenodd" points="11 1.576 6.583 6 11 10.424 10.424 11 6 6.583 1.576 11 1 10.424 5.417 6 1 1.576 1.576 1 6 5.417 10.424 1"></polygon></svg>
                     </div>
                 </div>
             </div>

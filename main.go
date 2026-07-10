@@ -20,6 +20,7 @@ func main() {
 		Title:  "hatacone-log-viewer",
 		Width:  1024,
 		Height: 768,
+		Frameless: true,
 		DragAndDrop: &options.DragAndDrop{
 			EnableFileDrop:     true,
 			DisableWebViewDrop: true,
