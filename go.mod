@@ -2,15 +2,11 @@ module hatacone-log-viewer
 
 go 1.25.0
 
-require (
-	github.com/nxadm/tail v1.4.11
-	github.com/wailsapp/wails/v2 v2.13.0
-)
+require github.com/wailsapp/wails/v2 v2.13.0
 
 require (
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -37,7 +33,6 @@ require (
 	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
-	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 )
 
 // replace github.com/wailsapp/wails/v2 v2.13.0 => C:\Users\ManhNT1\go\pkg\mod

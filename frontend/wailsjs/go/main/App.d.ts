@@ -13,3 +13,5 @@ export function ProcessDrop(arg1:string):Promise<main.DropResult>;
 export function SelectFolder():Promise<string>;
 
 export function StartTailing(arg1:string):Promise<void>;
+
+export function StopTailing():Promise<void>;

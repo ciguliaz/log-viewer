@@ -13,7 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/nxadm/tail"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -43,7 +42,6 @@ type LogUpdate struct {
 // App struct
 type App struct {
 	ctx           context.Context
-	currentTail   *tail.Tail
 	tailCancel    context.CancelFunc
 	mu             sync.Mutex
 	logEntries     []LogEntry
@@ -103,7 +101,23 @@ func (a *App) SelectFolder() string {
 		fmt.Println("Error selecting directory:", err)
 		return ""
 	}
+	
+	// Reset CWD to prevent Windows from locking the selected directory
+	os.Chdir(`C:\`)
+	
 	return dir
+}
+
+// StopTailing explicitly stops tailing the active file, releasing its lock
+func (a *App) StopTailing() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.tailCancel != nil {
+		a.tailCancel()
+		a.tailCancel = nil
+	}
+	a.activeFilePath = ""
+	a.logEntries = make([]LogEntry, 0)
 }
 
 type FileInfo struct {
@@ -256,36 +270,73 @@ func countLinesFast(filePath string) int64 {
 }
 
 func (a *App) tailLogs(ctx context.Context, filePath string, sessionID int64) {
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		fmt.Println("Log file does not exist:", filePath)
-		return
-	}
+	ticker := time.NewTicker(50 * time.Millisecond) // 50ms polling feels real-time (20 FPS)
+	defer ticker.Stop()
 
-	t, err := tail.TailFile(filePath, tail.Config{
-		Follow:    true,
-		ReOpen:    true,
-		MustExist: false,
-		Poll:      true, // Use polling on Windows to avoid CancelIo/CloseHandle fsnotify errors
-		Location:  &tail.SeekInfo{Offset: 0, Whence: 2}, // Tail from EOF since we lazy load history
-		Logger:    tail.DiscardingLogger,
-	})
-	if err != nil {
-		fmt.Println("Error tailing log:", err)
-		return
-	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			a.mu.Lock()
+			if a.sessionID != sessionID {
+				a.mu.Unlock()
+				return
+			}
+			offset := a.fileOffset
+			a.mu.Unlock()
 
-	a.mu.Lock()
-	a.currentTail = t
-	a.mu.Unlock()
+			info, err := os.Stat(filePath)
+			if err != nil {
+				continue // File might be temporarily unavailable
+			}
 
-	// Stop tailing if context is cancelled
-	go func() {
-		<-ctx.Done()
-		t.Stop()
-	}()
+			if info.Size() < offset {
+				offset = 0 // File truncated
+			} else if info.Size() == offset {
+				continue // No new data
+			}
 
-	for line := range t.Lines {
-		a.parseLine(line.Text, sessionID)
+			// Open file, read, and close IMMEDIATELY to prevent Windows file locks
+			file, err := os.Open(filePath)
+			if err != nil {
+				continue
+			}
+
+			_, err = file.Seek(offset, 0)
+			if err != nil {
+				file.Close()
+				continue
+			}
+
+			bytesToRead := info.Size() - offset
+			if bytesToRead > 1024*1024*5 {
+				bytesToRead = 1024 * 1024 * 5 // Max 5MB per poll to keep it responsive
+			}
+
+			buf := make([]byte, bytesToRead)
+			n, err := file.Read(buf)
+			file.Close() // ALWAYS close immediately
+
+			if n > 0 {
+				buf = buf[:n]
+				lastNewline := bytes.LastIndexByte(buf, '\n')
+				if lastNewline >= 0 {
+					linesStr := string(buf[:lastNewline])
+					lines := strings.Split(linesStr, "\n")
+					for _, line := range lines {
+						line = strings.TrimRight(line, "\r")
+						if len(line) > 0 {
+							a.parseLine(line, sessionID)
+						}
+					}
+					
+					a.mu.Lock()
+					a.fileOffset = offset + int64(lastNewline) + 1
+					a.mu.Unlock()
+				}
+			}
+		}
 	}
 }
 
@@ -507,7 +558,7 @@ func (a *App) LoadPreviousChunk() []LogEntry {
 }
 
 func (a *App) broadcastLoop() {
-	ticker := time.NewTicker(200 * time.Millisecond) // Update UI 5 times per second for smooth scrolling
+	ticker := time.NewTicker(50 * time.Millisecond) // 50ms UI update for near real-time rendering
 	for {
 		select {
 		case <-a.ctx.Done():

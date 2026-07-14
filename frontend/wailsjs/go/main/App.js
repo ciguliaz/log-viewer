@@ -25,3 +25,7 @@ export function SelectFolder() {
 export function StartTailing(arg1) {
   return window['go']['main']['App']['StartTailing'](arg1);
 }
+
+export function StopTailing() {
+  return window['go']['main']['App']['StopTailing']();
+}

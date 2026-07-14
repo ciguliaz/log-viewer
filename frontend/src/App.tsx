@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import './App.css';
 import { EventsOn, WindowMinimise, WindowToggleMaximise, WindowIsMaximised, Quit } from '../wailsjs/runtime/runtime';
-import { SelectFolder, ListFiles, StartTailing, LoadPreviousChunk, ProcessDrop } from '../wailsjs/go/main/App';
+import { SelectFolder, ListFiles, StartTailing, StopTailing, LoadPreviousChunk, ProcessDrop } from '../wailsjs/go/main/App';
 import { main } from '../wailsjs/go/models';
 import { TableVirtuoso, TableVirtuosoHandle } from 'react-virtuoso';
 
@@ -166,6 +166,39 @@ function App() {
         localStorage.setItem('workspaceFolders', JSON.stringify(paths));
     }, [workspaces]);
 
+    // Periodically poll workspaces to detect if they were renamed/deleted or if new files appeared
+    useEffect(() => {
+        if (workspaces.length === 0) return;
+        const interval = setInterval(async () => {
+            const updatedWorkspaces = await Promise.all(workspaces.map(async ws => {
+                const dropResult = await ProcessDrop(ws.path);
+                if (dropResult) {
+                    return {
+                        ...ws,
+                        files: dropResult.files || [],
+                        error: dropResult.error || undefined
+                    };
+                }
+                return ws;
+            }));
+            
+            setWorkspaces(prev => {
+                let changed = false;
+                if (prev.length !== updatedWorkspaces.length) return updatedWorkspaces;
+                
+                for (let i = 0; i < prev.length; i++) {
+                    if (prev[i].error !== updatedWorkspaces[i].error || prev[i].files.length !== updatedWorkspaces[i].files.length) {
+                        changed = true;
+                        break;
+                    }
+                }
+                return changed ? updatedWorkspaces : prev;
+            });
+        }, 3000); // Check every 3 seconds
+        
+        return () => clearInterval(interval);
+    }, [workspaces]);
+
     const virtuosoRef = useRef<TableVirtuosoHandle>(null);
 
     const displayLogs = useMemo(() => {
@@ -273,6 +306,19 @@ function App() {
             else next.add(path);
             return next;
         });
+    };
+
+    const handleRemoveFolder = async (e: React.MouseEvent, path: string) => {
+        e.stopPropagation();
+        setWorkspaces(prev => prev.filter(w => w.path !== path));
+        
+        // If the active file is inside this folder, we must stop tailing it to release the file lock
+        if (activeFilePathRef.current?.startsWith(path)) {
+            await StopTailing();
+            activeFilePathRef.current = null;
+            setActiveFile(null);
+            setLogs([]);
+        }
     };
 
     const handleSelectFile = async (file: main.FileInfo) => {
@@ -449,9 +495,21 @@ function App() {
                                     className="workspace-header" 
                                     onClick={() => toggleFolder(ws.path)}
                                     title={ws.error ? ws.error : ws.path}
+                                    style={{ display: 'flex', alignItems: 'center' }}
                                 >
-                                    <span style={{fontSize: '9px'}}>{expandedFolders.has(ws.path) ? '▼' : '▶'}</span> {ws.name.toUpperCase()}
-                                    {ws.error && <span style={{ color: '#ff4d4f', marginLeft: 'auto', marginRight: '5px', fontSize: '11px' }} title={ws.error}>⚠️</span>}
+                                    <span style={{fontSize: '9px', width: '12px'}}>{expandedFolders.has(ws.path) ? '▼' : '▶'}</span> 
+                                    <span style={{flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>
+                                        {ws.name.toUpperCase()}
+                                    </span>
+                                    {ws.error && <span style={{ color: '#ff4d4f', marginLeft: '5px', fontSize: '11px' }} title={ws.error}>⚠️</span>}
+                                    <span 
+                                        className="remove-folder-btn"
+                                        onClick={(e) => handleRemoveFolder(e, ws.path)}
+                                        title="Remove folder"
+                                        style={{ marginLeft: '5px', padding: '0 4px', cursor: 'pointer', fontSize: '12px', color: 'var(--text-dim)' }}
+                                    >
+                                        ✕
+                                    </span>
                                 </div>
                                 {expandedFolders.has(ws.path) && (
                                     <div className="workspace-files">
