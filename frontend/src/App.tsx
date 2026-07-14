@@ -187,7 +187,18 @@ function App() {
                 if (prev.length !== updatedWorkspaces.length) return updatedWorkspaces;
                 
                 for (let i = 0; i < prev.length; i++) {
-                    if (prev[i].error !== updatedWorkspaces[i].error || prev[i].files.length !== updatedWorkspaces[i].files.length) {
+                    if (prev[i].error !== updatedWorkspaces[i].error) {
+                        changed = true;
+                        break;
+                    }
+                    if (prev[i].files.length !== updatedWorkspaces[i].files.length) {
+                        changed = true;
+                        break;
+                    }
+                    // Deep compare file names to detect renames
+                    const prevNames = prev[i].files.map(f => f.name).join('|');
+                    const updatedNames = updatedWorkspaces[i].files.map(f => f.name).join('|');
+                    if (prevNames !== updatedNames) {
                         changed = true;
                         break;
                     }
