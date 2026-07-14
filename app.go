@@ -37,6 +37,7 @@ type LogEntry struct {
 type LogUpdate struct {
 	NewEntries      []LogEntry `json:"newEntries"`
 	LastEntryUpdate *LogEntry  `json:"lastEntryUpdate"`
+	ClearLogs       bool       `json:"clearLogs"`
 }
 
 // App struct
@@ -291,8 +292,21 @@ func (a *App) tailLogs(ctx context.Context, filePath string, sessionID int64) {
 				continue // File might be temporarily unavailable
 			}
 
+			// Check if file was truncated (e.g. wiped or rotated).
+			// Cases handled perfectly:
+			// 1. File wiped to 0 bytes: info.Size() < offset -> triggers reset.
+			// 2. File wiped and new logs written in same 50ms tick: if new size < old offset, triggers reset and reads new logs immediately.
+			// 3. File manually edited to remove last line: triggers reset and re-reads entire file.
+			// THEORETICAL BLIND SPOT: If the file is wiped AND more bytes are written than the old offset
+			// within a single 50ms window (e.g. writing 100MB of logs in <50ms), this size check won't detect the wipe.
+			// If bugs occur where a rotated file isn't cleared in the UI, consider checking file ModTime/CreationTime or inode.
 			if info.Size() < offset {
 				offset = 0 // File truncated
+				a.mu.Lock()
+				a.logEntries = make([]LogEntry, 0)
+				a.currentFirstLineNum = 1
+				a.currentLastLineNum = 0
+				a.mu.Unlock()
 			} else if info.Size() == offset {
 				continue // No new data
 			}
@@ -567,6 +581,11 @@ func (a *App) broadcastLoop() {
 			a.mu.Lock()
 			
 			var update LogUpdate
+			if a.lastSentIdx > len(a.logEntries) {
+				update.ClearLogs = true
+				a.lastSentIdx = 0
+			}
+			
 			if a.lastSentIdx > 0 && a.lastSentIdx <= len(a.logEntries) {
 				last := a.logEntries[a.lastSentIdx-1]
 				update.LastEntryUpdate = &last
@@ -580,7 +599,7 @@ func (a *App) broadcastLoop() {
 			
 			a.mu.Unlock()
 			
-			if len(update.NewEntries) > 0 || update.LastEntryUpdate != nil {
+			if update.ClearLogs || len(update.NewEntries) > 0 || update.LastEntryUpdate != nil {
 				runtime.EventsEmit(a.ctx, "log_update", update)
 			}
 		}

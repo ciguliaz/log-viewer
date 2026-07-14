@@ -403,7 +403,7 @@ function App() {
         // Listen for live updates (Delta payloads)
         EventsOn('log_update', (update: any) => {
             setLogs(prev => {
-                let next = [...prev];
+                let next = update.clearLogs ? [] : [...prev];
                 if (update.lastEntryUpdate && next.length > 0) {
                     next[next.length - 1] = update.lastEntryUpdate;
                 }
