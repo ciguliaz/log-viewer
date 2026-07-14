@@ -55,6 +55,7 @@ function App() {
         path: string;
         name: string;
         files: main.FileInfo[];
+        error?: string;
     };
     const [workspaces, setWorkspaces] = useState<WorkspaceFolder[]>([]);
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -139,7 +140,8 @@ function App() {
                                 return [...prev, {
                                     path: dropResult.path,
                                     name: dropResult.name,
-                                    files: dropResult.files || []
+                                    files: dropResult.files || [],
+                                    error: dropResult.error || undefined
                                 }];
                             });
                             // Automatically expand restored folders
@@ -241,7 +243,8 @@ function App() {
             setWorkspaces([{
                 path: selected,
                 name: wsName,
-                files: fileList || []
+                files: fileList || [],
+                error: undefined
             }]);
             setExpandedFolders(new Set([selected]));
         }
@@ -256,7 +259,8 @@ function App() {
             setWorkspaces(prev => [...prev, {
                 path: selected,
                 name: wsName,
-                files: fileList || []
+                files: fileList || [],
+                error: undefined
             }]);
             setExpandedFolders(prev => new Set(prev).add(selected));
         }
@@ -444,8 +448,10 @@ function App() {
                                 <div 
                                     className="workspace-header" 
                                     onClick={() => toggleFolder(ws.path)}
+                                    title={ws.error ? ws.error : ws.path}
                                 >
                                     <span style={{fontSize: '9px'}}>{expandedFolders.has(ws.path) ? '▼' : '▶'}</span> {ws.name.toUpperCase()}
+                                    {ws.error && <span style={{ color: '#ff4d4f', marginLeft: 'auto', marginRight: '5px', fontSize: '11px' }} title={ws.error}>⚠️</span>}
                                 </div>
                                 {expandedFolders.has(ws.path) && (
                                     <div className="workspace-files">

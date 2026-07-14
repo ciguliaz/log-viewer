@@ -139,12 +139,22 @@ type DropResult struct {
 	Path  string     `json:"path"`
 	Name  string     `json:"name"`
 	Files []FileInfo `json:"files"`
+	Error string     `json:"error"`
 }
 
 func (a *App) ProcessDrop(path string) *DropResult {
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil
+		name := filepath.Base(path)
+		if name == "" || name == "." {
+			name = path
+		}
+		return &DropResult{
+			Path:  path,
+			Name:  name,
+			Files: []FileInfo{},
+			Error: "Folder inaccessible or deleted",
+		}
 	}
 
 	dir := path
@@ -162,6 +172,7 @@ func (a *App) ProcessDrop(path string) *DropResult {
 		Path:  dir,
 		Name:  name,
 		Files: files,
+		Error: "",
 	}
 }
 

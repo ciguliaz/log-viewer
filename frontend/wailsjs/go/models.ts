@@ -18,6 +18,7 @@ export namespace main {
 	    path: string;
 	    name: string;
 	    files: FileInfo[];
+	    error: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new DropResult(source);
@@ -28,6 +29,7 @@ export namespace main {
 	        this.path = source["path"];
 	        this.name = source["name"];
 	        this.files = this.convertValues(source["files"], FileInfo);
+	        this.error = source["error"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
