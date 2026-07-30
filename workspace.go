@@ -22,24 +22,26 @@ type DropResult struct {
 	Error string     `json:"error"`
 }
 
-func getDefaultDir() string {
-	dir := `C:\Program Files (x86)\hatacone\logs`
-	if _, err := os.Stat(dir); err == nil {
-		return dir
+func getFirstValidPath(paths []string) string {
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
 	}
-	
-	if _, err := os.Stat(`C:\`); err == nil {
-		return `C:\`
+	return ""
+}
+
+func getDefaultDir() string {
+	paths := []string{
+		`C:\Program Files (x86)\hatacone\logs`,
+		`C:\`,
 	}
 	
 	for _, drive := range "DEFGHIJKLMNOPQRSTUVWXYZ" {
-		path := string(drive) + `:\`
-		if _, err := os.Stat(path); err == nil {
-			return path
-		}
+		paths = append(paths, string(drive)+`:\`)
 	}
 	
-	return ""
+	return getFirstValidPath(paths)
 }
 
 // SelectFolder opens a dialog to select a directory
