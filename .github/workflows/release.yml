@@ -19,7 +19,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23' # or whatever version you prefer
+          go-version: '1.23'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -32,8 +32,11 @@ jobs:
       - name: Build Application
         run: wails build -ldflags "-X main.AppVersion=${{ github.ref_name }}"
 
+      - name: Rename binary for go-selfupdate
+        run: mv build/bin/log-viewer.exe build/bin/log-viewer_windows_amd64.exe
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/bin/log-viewer.exe
+          files: build/bin/log-viewer_windows_amd64.exe
           generate_release_notes: true
