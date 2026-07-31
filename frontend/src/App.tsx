@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import './App.css';
 import { EventsOn, WindowMinimise, WindowToggleMaximise, WindowIsMaximised, Quit } from '../wailsjs/runtime/runtime';
-import { SelectFolder, ListFiles, StartTailing, StopTailing, LoadPreviousChunk, ProcessDrop } from '../wailsjs/go/main/App';
+import { SelectFolder, ListFiles, StartTailing, StopTailing, LoadPreviousChunk, ProcessDrop, CheckForUpdate, ApplyUpdate } from '../wailsjs/go/main/App';
 import { main } from '../wailsjs/go/models';
 import { TableVirtuoso, TableVirtuosoHandle } from 'react-virtuoso';
 
@@ -62,6 +62,41 @@ function App() {
     
     const [activeFile, setActiveFile] = useState<main.FileInfo | null>(null);
     const [logs, setLogs] = useState<main.LogEntry[]>([]);
+    
+    // Update State
+    const [updateInfo, setUpdateInfo] = useState<{available: boolean, version: string, releaseNotes: string} | null>(null);
+    const [showUpdateModal, setShowUpdateModal] = useState(false);
+    const [isUpdating, setIsUpdating] = useState(false);
+    
+    useEffect(() => {
+        const checkUpdate = async () => {
+            try {
+                // @ts-ignore - in case bindings aren't fully generated yet
+                const info = await CheckForUpdate();
+                if (info && info.available) {
+                    setUpdateInfo(info);
+                }
+            } catch (e) {
+                console.error("Failed to check for updates:", e);
+            }
+        };
+        // Delay update check slightly to not block startup
+        setTimeout(checkUpdate, 2000);
+    }, []);
+
+    const handleApplyUpdate = async () => {
+        setIsUpdating(true);
+        try {
+            // @ts-ignore
+            await ApplyUpdate();
+            alert("Update successful! Please restart the application.");
+            Quit();
+        } catch (e) {
+            console.error("Update failed:", e);
+            alert("Update failed: " + e);
+            setIsUpdating(false);
+        }
+    };
     
     // Window state for maximize button icon
     const [isMaximized, setIsMaximized] = useState(false);
@@ -478,6 +513,15 @@ function App() {
                 </div>
                 
                 <div className="window-controls">
+                    {updateInfo && (
+                        <div 
+                            className="update-available-text"
+                            onClick={() => setShowUpdateModal(true)}
+                            style={{ cursor: 'pointer', color: 'var(--accent)', fontSize: '12px', marginRight: '15px', display: 'flex', alignItems: 'center', fontWeight: 'bold' }}
+                        >
+                            Update Available ({updateInfo.version})
+                        </div>
+                    )}
                     <div className="window-control" onClick={() => WindowMinimise()}>
                         <svg width="12" height="12" viewBox="0 0 12 12"><rect fill="currentColor" width="10" height="1" x="1" y="6"></rect></svg>
                     </div>
@@ -690,6 +734,34 @@ function App() {
                 )}
             </div>
         </div>
+        
+            {/* Update Modal */}
+            {showUpdateModal && updateInfo && (
+                <div className="modal-overlay" onClick={() => !isUpdating && setShowUpdateModal(false)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ width: '500px' }}>
+                        <h2>Update Available: {updateInfo.version}</h2>
+                        <div style={{ marginTop: '15px', marginBottom: '20px', maxHeight: '300px', overflowY: 'auto', background: 'var(--bg-dark)', padding: '10px', borderRadius: '4px', whiteSpace: 'pre-wrap', fontSize: '13px' }}>
+                            {updateInfo.releaseNotes || "No release notes provided."}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                            <button 
+                                onClick={() => setShowUpdateModal(false)} 
+                                disabled={isUpdating}
+                                style={{ padding: '8px 16px', background: 'var(--bg-lighter)', color: 'var(--text-color)', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={handleApplyUpdate} 
+                                disabled={isUpdating}
+                                style={{ padding: '8px 16px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '4px', cursor: isUpdating ? 'wait' : 'pointer' }}
+                            >
+                                {isUpdating ? 'Downloading & Updating...' : 'Update Now'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -30,7 +30,7 @@ jobs:
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
       - name: Build Application
-        run: wails build
+        run: wails build -ldflags "-X main.AppVersion=${{ github.ref_name }}"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
