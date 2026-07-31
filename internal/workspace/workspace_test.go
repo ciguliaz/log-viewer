@@ -1,4 +1,4 @@
-package main
+package workspace
 
 import (
 	"os"
@@ -14,8 +14,6 @@ func TestGetDefaultDir(t *testing.T) {
 }
 
 func TestListFiles(t *testing.T) {
-	app := NewApp()
-	
 	// Create a temp directory
 	tmpDir := t.TempDir()
 	
@@ -29,14 +27,14 @@ func TestListFiles(t *testing.T) {
 	os.Mkdir(subDir, 0755)
 	os.WriteFile(filepath.Join(subDir, "test3.log"), []byte("log"), 0644)
 	
-	files := app.ListFiles(tmpDir)
+	files := ListFiles(tmpDir)
 	
 	if len(files) != 2 {
 		t.Errorf("Expected 2 files, got %d", len(files))
 	}
 	
 	// Test listing non-existent directory
-	files = app.ListFiles("C:\\does_not_exist_12345")
+	files = ListFiles("C:\\does_not_exist_12345")
 	if len(files) != 0 {
 		t.Error("Expected empty slice for non-existent directory")
 	}
@@ -44,12 +42,11 @@ func TestListFiles(t *testing.T) {
 
 
 func TestListFilesNames(t *testing.T) {
-	app := NewApp()
 	tmpDir := t.TempDir()
 	os.WriteFile(filepath.Join(tmpDir, "test1.log"), []byte("log"), 0644)
 	os.WriteFile(filepath.Join(tmpDir, "test2.log"), []byte("log"), 0644)
 	
-	files := app.ListFiles(tmpDir)
+	files := ListFiles(tmpDir)
 	
 	// Verify names
 	names := make(map[string]bool)
@@ -62,20 +59,19 @@ func TestListFilesNames(t *testing.T) {
 	}
 	
 	// Test empty path
-	if len(app.ListFiles("")) != 0 {
+	if len(ListFiles("")) != 0 {
 		t.Error("ListFiles with empty path should return empty slice")
 	}
 }
 
 func TestProcessDrop(t *testing.T) {
-	app := NewApp()
 	tmpDir := t.TempDir()
 	
 	logPath := filepath.Join(tmpDir, "app.log")
 	os.WriteFile(logPath, []byte("hello"), 0644)
 	
 	// Case 1: Drop a directory
-	res := app.ProcessDrop(tmpDir)
+	res := ProcessDrop(tmpDir)
 	if res.Error != "" {
 		t.Errorf("ProcessDrop(dir) returned error: %s", res.Error)
 	}
@@ -87,7 +83,7 @@ func TestProcessDrop(t *testing.T) {
 	}
 	
 	// Case 2: Drop a specific file (should resolve to its parent directory)
-	res2 := app.ProcessDrop(logPath)
+	res2 := ProcessDrop(logPath)
 	if res2.Error != "" {
 		t.Errorf("ProcessDrop(file) returned error: %s", res2.Error)
 	}
@@ -96,7 +92,7 @@ func TestProcessDrop(t *testing.T) {
 	}
 	
 	// Case 3: Drop invalid path
-	res3 := app.ProcessDrop(filepath.Join(tmpDir, "does-not-exist"))
+	res3 := ProcessDrop(filepath.Join(tmpDir, "does-not-exist"))
 	if res3.Error == "" {
 		t.Error("Expected error for non-existent path")
 	}

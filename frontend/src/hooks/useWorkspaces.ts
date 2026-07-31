@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { main } from '../../wailsjs/go/models';
+import { models } from '../../wailsjs/go/models';
 import { ProcessDrop, SelectFolder, ListFiles } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 
 export type WorkspaceFolder = {
     path: string;
     name: string;
-    files: main.FileInfo[];
+    files: models.FileInfo[];
     error?: string;
 };
 

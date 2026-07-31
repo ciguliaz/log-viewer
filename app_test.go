@@ -11,9 +11,6 @@ func TestNewApp(t *testing.T) {
 	if app == nil {
 		t.Fatal("Expected App instance")
 	}
-	if len(app.logEntries) != 0 {
-		t.Errorf("Expected 0 log entries, got %d", len(app.logEntries))
-	}
 }
 
 func TestStartupAndBroadcast(t *testing.T) {
@@ -25,6 +22,10 @@ func TestStartupAndBroadcast(t *testing.T) {
 	
 	if app.ctx == nil {
 		t.Error("Expected context to be set")
+	}
+	
+	if app.tailer == nil {
+		t.Error("Expected tailer to be instantiated")
 	}
 	
 	// Wait a bit to let broadcastLoop tick at least once

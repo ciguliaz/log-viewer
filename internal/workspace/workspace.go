@@ -1,26 +1,14 @@
-package main
+package workspace
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"log-viewer/internal/models"
 )
-
-// FileInfo represents a single log file in a tracked folder.
-type FileInfo struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-}
-
-// DropResult is the response sent to the frontend after a folder is dropped or polled.
-type DropResult struct {
-	Path  string     `json:"path"`
-	Name  string     `json:"name"`
-	Files []FileInfo `json:"files"`
-	Error string     `json:"error"`
-}
 
 func getFirstValidPath(paths []string) string {
 	for _, p := range paths {
@@ -45,12 +33,12 @@ func getDefaultDir() string {
 }
 
 // SelectFolder opens a dialog to select a directory
-func (a *App) SelectFolder() string {
+func SelectFolder(ctx context.Context) string {
 	opts := runtime.OpenDialogOptions{
 		DefaultDirectory: getDefaultDir(),
 		Title:            "Select Log Folder",
 	}
-	dir, err := runtime.OpenDirectoryDialog(a.ctx, opts)
+	dir, err := runtime.OpenDirectoryDialog(ctx, opts)
 	if err != nil {
 		fmt.Println("Error selecting directory:", err)
 		return ""
@@ -63,8 +51,8 @@ func (a *App) SelectFolder() string {
 }
 
 // ListFiles lists .log files in a given directory
-func (a *App) ListFiles(dirPath string) []FileInfo {
-	var files []FileInfo
+func ListFiles(dirPath string) []models.FileInfo {
+	var files []models.FileInfo
 	if dirPath == "" {
 		return files
 	}
@@ -77,7 +65,7 @@ func (a *App) ListFiles(dirPath string) []FileInfo {
 
 	for _, entry := range entries {
 		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".log" {
-			files = append(files, FileInfo{
+			files = append(files, models.FileInfo{
 				Name: entry.Name(),
 				Path: filepath.Join(dirPath, entry.Name()),
 			})
@@ -87,17 +75,17 @@ func (a *App) ListFiles(dirPath string) []FileInfo {
 }
 
 // ProcessDrop validates a dropped/polled folder path and returns its contents.
-func (a *App) ProcessDrop(path string) *DropResult {
+func ProcessDrop(path string) *models.DropResult {
 	info, err := os.Stat(path)
 	if err != nil {
 		name := filepath.Base(path)
 		if name == "" || name == "." {
 			name = path
 		}
-		return &DropResult{
+		return &models.DropResult{
 			Path:  path,
 			Name:  name,
-			Files: []FileInfo{},
+			Files: []models.FileInfo{},
 			Error: "Folder inaccessible or deleted",
 		}
 	}
@@ -107,13 +95,13 @@ func (a *App) ProcessDrop(path string) *DropResult {
 		dir = filepath.Dir(path)
 	}
 
-	files := a.ListFiles(dir)
+	files := ListFiles(dir)
 	name := filepath.Base(dir)
 	if name == "" || name == "." {
 		name = dir
 	}
 
-	return &DropResult{
+	return &models.DropResult{
 		Path:  dir,
 		Name:  name,
 		Files: files,

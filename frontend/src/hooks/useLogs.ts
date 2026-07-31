@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { main } from '../../wailsjs/go/models';
+import { models } from '../../wailsjs/go/models';
 import { StartTailing, StopTailing, LoadPreviousChunk } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 
 export function useLogs(compactMode: boolean) {
-    const [activeFile, setActiveFile] = useState<main.FileInfo | null>(null);
-    const [logs, setLogs] = useState<main.LogEntry[]>([]);
+    const [activeFile, setActiveFile] = useState<models.FileInfo | null>(null);
+    const [logs, setLogs] = useState<models.LogEntry[]>([]);
     const [searchTerm, setSearchTerm] = useState<string>('');
     const [autoScroll, setAutoScroll] = useState<boolean>(true);
     const [firstItemIndex, setFirstItemIndex] = useState<number>(1000000);
@@ -13,7 +13,7 @@ export function useLogs(compactMode: boolean) {
     const isLoadingMore = useRef(false);
     const activeFilePathRef = useRef<string | null>(null);
 
-    const handleSelectFile = async (file: main.FileInfo) => {
+    const handleSelectFile = async (file: models.FileInfo) => {
         activeFilePathRef.current = file.path; // Instantly abort any active loops
         
         setActiveFile(file);

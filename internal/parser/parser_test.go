@@ -1,7 +1,8 @@
-package main
+package parser
 
 import (
 	"testing"
+	"log-viewer/internal/models"
 )
 
 func TestParseTimeComponents(t *testing.T) {
@@ -57,29 +58,26 @@ func TestParseTimeComponents(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotDate, gotTimePart, gotMs, gotTz := parseTimeComponents(tt.rawTime)
+			gotDate, gotTimePart, gotMs, gotTz := ParseTimeComponents(tt.rawTime)
 			if gotDate != tt.wantDate {
-				t.Errorf("parseTimeComponents() gotDate = %v, want %v", gotDate, tt.wantDate)
+				t.Errorf("ParseTimeComponents() gotDate = %v, want %v", gotDate, tt.wantDate)
 			}
 			if gotTimePart != tt.wantTimePart {
-				t.Errorf("parseTimeComponents() gotTimePart = %v, want %v", gotTimePart, tt.wantTimePart)
+				t.Errorf("ParseTimeComponents() gotTimePart = %v, want %v", gotTimePart, tt.wantTimePart)
 			}
 			if gotMs != tt.wantMs {
-				t.Errorf("parseTimeComponents() gotMs = %v, want %v", gotMs, tt.wantMs)
+				t.Errorf("ParseTimeComponents() gotMs = %v, want %v", gotMs, tt.wantMs)
 			}
 			if gotTz != tt.wantTz {
-				t.Errorf("parseTimeComponents() gotTz = %v, want %v", gotTz, tt.wantTz)
+				t.Errorf("ParseTimeComponents() gotTz = %v, want %v", gotTz, tt.wantTz)
 			}
 		})
 	}
 }
 
-func TestParseSingleLine_Shadow(t *testing.T) {
-	app := NewApp()
-	app.isShadow = true
-
+func TestParseLine_Shadow(t *testing.T) {
 	line := "2023/10/25 15:30:45 [INFO] Processing hash=abc1234 :8080 → 192.168.1.1:9090 → Success"
-	entry := app.parseSingleLine(line, true)
+	entry := ParseLine(line, true)
 
 	if entry.Date != "2023/10/25" {
 		t.Errorf("Expected Date '2023/10/25', got %v", entry.Date)
@@ -96,27 +94,25 @@ func TestParseSingleLine_Shadow(t *testing.T) {
 	}
 }
 
-func TestParseSingleLine_Shadow_Invalid(t *testing.T) {
-	app := NewApp()
+func TestParseLine_Shadow_Invalid(t *testing.T) {
 	line := "Random unformatted shadow log"
-	entry := app.parseSingleLine(line, true)
+	entry := ParseLine(line, true)
 
 	if entry.Message != line {
 		t.Errorf("Expected Message '%v', got %v", line, entry.Message)
 	}
 }
 
-func TestParseSingleLine_Standard(t *testing.T) {
-	app := NewApp()
+func TestParseLine_Standard(t *testing.T) {
 	tests := []struct {
 		name    string
 		line    string
-		want    LogEntry
+		want    models.LogEntry
 	}{
 		{
 			name: "Bracket format with level",
 			line: "[2023-10-25 15:30:45] [ERROR] Something failed",
-			want: LogEntry{
+			want: models.LogEntry{
 				Date:    "2023-10-25",
 				Time:    "15:30:45",
 				Level:   "ERROR",
@@ -126,18 +122,18 @@ func TestParseSingleLine_Standard(t *testing.T) {
 		{
 			name: "Python format",
 			line: "2023-10-25 15:30:45,123 - INFO - Something happened",
-			want: LogEntry{
+			want: models.LogEntry{
 				Date:    "2023-10-25",
 				Time:    "15:30:45",
 				Ms:      "123",
 				Level:   "INFO",
 				Message: "- Something happened",
-			}, // Wait, in Python format: "2023-10-25 15:30:45,123 - INFO - message" the python regex extracts the whole "INFO - message" as msg. Let's see how parser handles it.
+			},
 		},
 		{
 			name: "Key Value format",
 			line: `time="2023-10-25T15:30:45Z" level="debug" tag="app" msg="Hello"`,
-			want: LogEntry{
+			want: models.LogEntry{
 				Date:    "2023-10-25",
 				Time:    "15:30:45",
 				Tz:      "Z",
@@ -149,7 +145,7 @@ func TestParseSingleLine_Standard(t *testing.T) {
 		{
 			name: "Unbracketed level prefix",
 			line: "2023-10-25 15:30:45 WARNING: Disk is full",
-			want: LogEntry{
+			want: models.LogEntry{
 				Date:    "2023-10-25",
 				Time:    "15:30:45",
 				Level:   "WARNING",
@@ -159,7 +155,7 @@ func TestParseSingleLine_Standard(t *testing.T) {
 		{
 			name: "Double bracket tags",
 			line: "[2023-10-25 15:30:45] [App1] [ERROR] Disk is full",
-			want: LogEntry{
+			want: models.LogEntry{
 				Date:    "2023-10-25",
 				Time:    "15:30:45",
 				Tag:     "App1",
@@ -170,7 +166,7 @@ func TestParseSingleLine_Standard(t *testing.T) {
 		{
 			name: "No time format",
 			line: "[INFO] Just a message",
-			want: LogEntry{
+			want: models.LogEntry{
 				Level:   "INFO",
 				Message: "Just a message",
 			},
@@ -179,7 +175,7 @@ func TestParseSingleLine_Standard(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := app.parseSingleLine(tt.line, false)
+			got := ParseLine(tt.line, false)
 			
 			// We only compare the explicitly set fields in want
 			if tt.want.Date != "" && got.Date != tt.want.Date { t.Errorf("Date: got %v want %v", got.Date, tt.want.Date) }
@@ -190,58 +186,5 @@ func TestParseSingleLine_Standard(t *testing.T) {
 			if tt.want.Tag != "" && got.Tag != tt.want.Tag { t.Errorf("Tag: got %v want %v", got.Tag, tt.want.Tag) }
 			if tt.want.Message != "" && got.Message != tt.want.Message { t.Errorf("Message: got %v want %v", got.Message, tt.want.Message) }
 		})
-	}
-}
-
-func TestParseLine(t *testing.T) {
-	app := NewApp()
-	app.sessionID = 123
-	
-	app.parseLine("2023-10-25 15:30:45 INFO Hello", 123)
-	
-	app.mu.Lock()
-	count := len(app.logEntries)
-	lastLineNum := app.currentLastLineNum
-	app.mu.Unlock()
-	
-	if count != 1 {
-		t.Errorf("Expected 1 log entry, got %d", count)
-	}
-	if lastLineNum != 1 {
-		t.Errorf("Expected currentLastLineNum 1, got %d", lastLineNum)
-	}
-	
-	// Test wrong session ID (should be ignored)
-	app.parseLine("2023-10-25 15:30:46 INFO Ignore me", 999)
-	
-	app.mu.Lock()
-	count2 := len(app.logEntries)
-	app.mu.Unlock()
-	
-	if count2 != 1 {
-		t.Errorf("Expected 1 log entry after bad session, got %d", count2)
-	}
-}
-
-func TestParseLine_Eviction(t *testing.T) {
-	app := NewApp()
-	app.sessionID = 123
-	
-	// Temporarily pretend we have 50000 entries
-	app.logEntries = make([]LogEntry, 50000)
-	app.lastSentIdx = 5
-	
-	app.parseLine("2023-10-25 15:30:45 INFO Overflow", 123)
-	
-	app.mu.Lock()
-	count := len(app.logEntries)
-	lastSent := app.lastSentIdx
-	app.mu.Unlock()
-	
-	if count != 50000 {
-		t.Errorf("Expected 50000 entries (eviction working), got %d", count)
-	}
-	if lastSent != 4 {
-		t.Errorf("Expected lastSentIdx to decrement to 4, got %d", lastSent)
 	}
 }

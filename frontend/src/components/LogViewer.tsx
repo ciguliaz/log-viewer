@@ -1,10 +1,10 @@
 import React, { useRef, useEffect } from 'react';
 import { TableVirtuoso, TableVirtuosoHandle } from 'react-virtuoso';
-import { main } from '../../wailsjs/go/models';
+import { models } from '../../wailsjs/go/models';
 import { MessageCell } from './MessageCell';
 
 interface LogViewerProps {
-    activeFile: main.FileInfo | null;
+    activeFile: models.FileInfo | null;
     displayLogs: any[];
     searchTerm: string;
     setSearchTerm: (term: string) => void;

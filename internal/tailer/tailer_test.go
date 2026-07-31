@@ -1,4 +1,4 @@
-package main
+package tailer
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"log-viewer/internal/models"
 )
 
 func TestCountLinesFast(t *testing.T) {
@@ -36,7 +37,7 @@ func TestCountLinesFast(t *testing.T) {
 }
 
 func TestTailLogs_Integration(t *testing.T) {
-	app := NewApp()
+	tailer := NewTailer(context.Background())
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "tail.log")
 	
@@ -45,29 +46,29 @@ func TestTailLogs_Integration(t *testing.T) {
 	
 	// We need to bypass StartTailing because it creates a background context we can't easily wait on.
 	// We will manually setup the state and call tailLogs with a cancelable context.
-	app.logEntries = make([]LogEntry, 0)
-	app.activeFilePath = logPath
-	app.sessionID = 1
-	app.fileOffset = 0
-	app.currentFirstLineNum = 1
-	app.currentLastLineNum = 0
+	tailer.logEntries = make([]models.LogEntry, 0)
+	tailer.activeFilePath = logPath
+	tailer.sessionID = 1
+	tailer.fileOffset = 0
+	tailer.currentFirstLineNum = 1
+	tailer.currentLastLineNum = 0
 	
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	
-	go app.tailLogs(ctx, logPath, 1)
+	go tailer.tailLogs(ctx, logPath, 1)
 	
 	// A1. Normal Append
 	os.WriteFile(logPath, []byte("2023-10-25 10:00:00 INFO Line 1\n"), 0644)
 	time.Sleep(300 * time.Millisecond) // Wait for 50ms tick
 	
-	app.mu.Lock()
-	count := len(app.logEntries)
+	tailer.mu.Lock()
+	count := len(tailer.logEntries)
 	msg := ""
 	if count > 0 {
-		msg = app.logEntries[0].Message
+		msg = tailer.logEntries[0].Message
 	}
-	app.mu.Unlock()
+	tailer.mu.Unlock()
 	
 	if count != 1 {
 		t.Errorf("A1. Expected 1 log entry, got %d", count)
@@ -82,9 +83,9 @@ func TestTailLogs_Integration(t *testing.T) {
 	f.Close()
 	time.Sleep(300 * time.Millisecond)
 	
-	app.mu.Lock()
-	count = len(app.logEntries)
-	app.mu.Unlock()
+	tailer.mu.Lock()
+	count = len(tailer.logEntries)
+	tailer.mu.Unlock()
 	
 	if count != 3 {
 		t.Errorf("A2. Expected 3 log entries total, got %d", count)
@@ -95,13 +96,13 @@ func TestTailLogs_Integration(t *testing.T) {
 	os.WriteFile(logPath, []byte("2023-10-25 10:00:03 INFO New Line 1 after rotate\n"), 0644)
 	time.Sleep(300 * time.Millisecond)
 	
-	app.mu.Lock()
-	count = len(app.logEntries)
-	offset := app.fileOffset
+	tailer.mu.Lock()
+	count = len(tailer.logEntries)
+	offset := tailer.fileOffset
 	if count > 0 {
-		msg = app.logEntries[0].Message
+		msg = tailer.logEntries[0].Message
 	}
-	app.mu.Unlock()
+	tailer.mu.Unlock()
 	
 	if count != 1 {
 		t.Errorf("C1. Expected logEntries to reset to 1, got %d", count)
@@ -117,20 +118,20 @@ func TestTailLogs_Integration(t *testing.T) {
 }
 
 func TestLoadPreviousChunk(t *testing.T) {
-	app := NewApp()
+	tailer := NewTailer(context.Background())
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "history.log")
 	
 	// Write a 3 line file
 	os.WriteFile(logPath, []byte("Line 1\nLine 2\nLine 3\n"), 0644)
 	
-	app.activeFilePath = logPath
-	app.fileOffset = 21 // Size of "Line 1\nLine 2\nLine 3\n"
-	app.currentFirstLineNum = 4
-	app.currentLastLineNum = 3
+	tailer.activeFilePath = logPath
+	tailer.fileOffset = 21 // Size of "Line 1\nLine 2\nLine 3\n"
+	tailer.currentFirstLineNum = 4
+	tailer.currentLastLineNum = 3
 	
 	// Load history
-	chunk := app.LoadPreviousChunk()
+	chunk := tailer.LoadPreviousChunk()
 	
 	if len(chunk) != 3 {
 		t.Errorf("Expected 3 lines, got %d", len(chunk))
@@ -139,10 +140,10 @@ func TestLoadPreviousChunk(t *testing.T) {
 		t.Errorf("Expected first line to be 'Line 1', got '%s'", chunk[0].Message)
 	}
 	
-	app.mu.Lock()
-	offset := app.fileOffset
-	firstLine := app.currentFirstLineNum
-	app.mu.Unlock()
+	tailer.mu.Lock()
+	offset := tailer.fileOffset
+	firstLine := tailer.currentFirstLineNum
+	tailer.mu.Unlock()
 	
 	if offset != 0 {
 		t.Errorf("Expected offset to reach 0, got %d", offset)
@@ -152,52 +153,52 @@ func TestLoadPreviousChunk(t *testing.T) {
 	}
 	
 	// Test loading when offset is 0
-	chunk2 := app.LoadPreviousChunk()
+	chunk2 := tailer.LoadPreviousChunk()
 	if chunk2 != nil {
 		t.Errorf("Expected nil when offset is 0, got %v", chunk2)
 	}
 	
 	// Test file missing
-	app.activeFilePath = "does_not_exist.log"
-	app.fileOffset = 100
-	chunk3 := app.LoadPreviousChunk()
+	tailer.activeFilePath = "does_not_exist.log"
+	tailer.fileOffset = 100
+	chunk3 := tailer.LoadPreviousChunk()
 	if chunk3 != nil {
 		t.Errorf("Expected nil when file missing, got %v", chunk3)
 	}
 }
 
 func TestGetInitialLogs(t *testing.T) {
-	app := NewApp()
-	app.logEntries = []LogEntry{ {Message: "A"}, {Message: "B"} }
-	app.lastSentIdx = 0
+	tailer := NewTailer(context.Background())
+	tailer.logEntries = []models.LogEntry{ {Message: "A"}, {Message: "B"} }
+	tailer.lastSentIdx = 0
 	
-	logs := app.GetInitialLogs()
+	logs := tailer.GetInitialLogs()
 	if len(logs) != 2 {
 		t.Errorf("Expected 2 logs, got %d", len(logs))
 	}
 	
-	if app.lastSentIdx != 2 {
-		t.Errorf("Expected lastSentIdx to be updated to 2, got %d", app.lastSentIdx)
+	if tailer.lastSentIdx != 2 {
+		t.Errorf("Expected lastSentIdx to be updated to 2, got %d", tailer.lastSentIdx)
 	}
 }
 
 func TestStopTailing(t *testing.T) {
-	app := NewApp()
+	tailer := NewTailer(context.Background())
 	
 	ctx, cancel := context.WithCancel(context.Background())
-	app.tailCancel = cancel
-	app.activeFilePath = "test.log"
-	app.logEntries = []LogEntry{ {Message: "A"} }
+	tailer.tailCancel = cancel
+	tailer.activeFilePath = "test.log"
+	tailer.logEntries = []models.LogEntry{ {Message: "A"} }
 	
-	app.StopTailing()
+	tailer.StopTailing()
 	
-	if app.tailCancel != nil {
+	if tailer.tailCancel != nil {
 		t.Error("tailCancel should be nil")
 	}
-	if app.activeFilePath != "" {
+	if tailer.activeFilePath != "" {
 		t.Error("activeFilePath should be empty")
 	}
-	if len(app.logEntries) != 0 {
+	if len(tailer.logEntries) != 0 {
 		t.Error("logEntries should be cleared")
 	}
 	
@@ -209,23 +210,23 @@ func TestStopTailing(t *testing.T) {
 }
 
 func TestStartTailing(t *testing.T) {
-	app := NewApp()
+	tailer := NewTailer(context.Background())
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "start.log")
 	os.WriteFile(logPath, []byte("Hello\nWorld\n"), 0644)
 	
 	// Need a dummy context for the tailLogs to not hang forever
 	ctx, cancel := context.WithCancel(context.Background())
-	app.ctx = ctx
+	tailer.ctx = ctx
 	defer cancel()
 	
-	app.StartTailing(logPath)
+	tailer.StartTailing(logPath)
 	
-	app.mu.Lock()
-	cancelTail := app.tailCancel
-	offset := app.fileOffset
-	totalLines := app.currentFirstLineNum
-	app.mu.Unlock()
+	tailer.mu.Lock()
+	cancelTail := tailer.tailCancel
+	offset := tailer.fileOffset
+	totalLines := tailer.currentFirstLineNum
+	tailer.mu.Unlock()
 	
 	if cancelTail == nil {
 		t.Error("tailCancel should be set")
@@ -238,18 +239,18 @@ func TestStartTailing(t *testing.T) {
 	}
 	
 	// Test stopping via StartTailing (stops previous)
-	app.StartTailing(filepath.Join(tmpDir, "missing.log"))
+	tailer.StartTailing(filepath.Join(tmpDir, "missing.log"))
 	
 	// Wait for goroutine to hit error path
 	time.Sleep(20 * time.Millisecond)
 	
 	// Test tailing a directory (triggers file read error/EOF loops but covers branch)
-	app.StartTailing(tmpDir)
+	tailer.StartTailing(tmpDir)
 	time.Sleep(20 * time.Millisecond)
 	
-	app.mu.Lock()
-	offset2 := app.fileOffset
-	app.mu.Unlock()
+	tailer.mu.Lock()
+	offset2 := tailer.fileOffset
+	tailer.mu.Unlock()
 	
 	if offset2 != 0 {
 		t.Errorf("Expected offset 0 for missing file, got %d", offset2)

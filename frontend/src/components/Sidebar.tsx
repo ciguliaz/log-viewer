@@ -1,17 +1,17 @@
 import React from 'react';
 import { WorkspaceFolder } from '../hooks/useWorkspaces';
-import { main } from '../../wailsjs/go/models';
+import { models } from '../../wailsjs/go/models';
 
 interface SidebarProps {
     workspaces: WorkspaceFolder[];
     expandedFolders: Set<string>;
-    activeFile: main.FileInfo | null;
+    activeFile: models.FileInfo | null;
     appVersion: string;
     isCheckingUpdate: boolean;
     
     toggleFolder: (path: string) => void;
     handleRemoveFolder: (e: React.MouseEvent, path: string) => void;
-    handleSelectFile: (file: main.FileInfo) => void;
+    handleSelectFile: (file: models.FileInfo) => void;
     checkUpdate: (manual: boolean) => void;
 }
 

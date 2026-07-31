@@ -1,4 +1,4 @@
-package main
+package parser
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"log-viewer/internal/models"
 )
 
 var idCounter int64
@@ -20,7 +21,7 @@ var (
 	timeSplitRegex = regexp.MustCompile(`^(\d{4}[-/]\d{2}[-/]\d{2})\s+(\d{2}:\d{2}:\d{2})(?:[,.](\d+))?\s*(Z|[+-]\d{2}:?\d{2})?`)
 )
 
-func parseTimeComponents(rawTime string) (date, timePart, ms, tz string) {
+func ParseTimeComponents(rawTime string) (date, timePart, ms, tz string) {
 	// Normalize T delimiter from ISO format to space for regex matching
 	t := strings.Replace(rawTime, "T", " ", 1)
 	
@@ -37,35 +38,9 @@ func parseTimeComponents(rawTime string) (date, timePart, ms, tz string) {
 	return
 }
 
-func (a *App) parseLine(text string, sessionID int64) {
-	a.mu.Lock()
-	if sessionID != a.sessionID {
-		a.mu.Unlock()
-		return
-	}
-	isShadow := a.isShadow
-	a.mu.Unlock()
-	
-	entry := a.parseSingleLine(text, isShadow)
-
-	a.mu.Lock()
-	a.currentLastLineNum++
-	entry.LineNum = a.currentLastLineNum
-	a.logEntries = append(a.logEntries, entry)
-	
-	// Keep maximum 50000 entries in memory for live tail
-	if len(a.logEntries) > 50000 {
-		a.logEntries = a.logEntries[1:]
-		if a.lastSentIdx > 0 {
-			a.lastSentIdx--
-		}
-	}
-	a.mu.Unlock()
-}
-
-func (a *App) parseSingleLine(text string, isShadow bool) LogEntry {
+func ParseLine(text string, isShadow bool) models.LogEntry {
 	text = strings.TrimRight(text, "\r\n")
-	var entry LogEntry
+	var entry models.LogEntry
 	id := atomic.AddInt64(&idCounter, 1)
 	entry.Id = fmt.Sprintf("%d-%d", time.Now().UnixNano(), id)
 	entry.Raw = text
@@ -74,7 +49,7 @@ func (a *App) parseSingleLine(text string, isShadow bool) LogEntry {
 	if isShadow {
 		matches := shadowRegex.FindStringSubmatch(text)
 		if len(matches) >= 8 {
-			d, t, ms, tz := parseTimeComponents(matches[1])
+			d, t, ms, tz := ParseTimeComponents(matches[1])
 			entry.Date = d
 			entry.Time = t
 			entry.Ms = ms
@@ -106,7 +81,7 @@ func (a *App) parseSingleLine(text string, isShadow bool) LogEntry {
 		}
 		
 		if rawTime != "" {
-			d, t, ms, tz := parseTimeComponents(rawTime)
+			d, t, ms, tz := ParseTimeComponents(rawTime)
 			entry.Date = d
 			entry.Time = t
 			entry.Ms = ms
