@@ -40,11 +40,12 @@ jobs:
       - name: Build Application
         run: wails build -ldflags "-X main.AppVersion=${{ github.ref_name }}"
 
-      - name: Rename binary for go-selfupdate
-        run: mv build/bin/log-viewer.exe build/bin/log-viewer_windows_amd64.exe
+      - name: Package binary
+        shell: pwsh
+        run: Compress-Archive -Path build/bin/log-viewer.exe -DestinationPath build/bin/log-viewer_windows_amd64.zip
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/bin/log-viewer_windows_amd64.exe
+          files: build/bin/log-viewer_windows_amd64.zip
           generate_release_notes: true

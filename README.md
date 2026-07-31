@@ -1,33 +1,52 @@
 # Log Viewer
 
-A high-performance, real-time log viewer built with Wails (Go) and React (TypeScript). Designed to handle massive log files seamlessly without freezing the UI or triggering Windows file locking issues.
+A fast, real-time log file viewer for Windows. Built with [Wails](https://wails.io/) (Go) and React (TypeScript).
 
-## Features at a Glance
-- **Real-Time Streaming:** Instant, real-time log tailing using a custom lock-free polling mechanism.
-- **Massive Scale:** Virtualized rendering (React Virtuoso) supports viewing 500,000+ lines without UI lag.
-- **Auto-Parsing:** Automatically extracts and organizes Timestamps, Log Levels (INFO/ERROR/WARN), and Tags into resizable, toggleable columns.
-- **Smart Workspaces:** Persists your folders, detects file renames/deletions automatically, and natively handles drag-and-drop.
-- **Safe on Windows:** Will never block you from renaming or deleting log folders in File Explorer while the app is running.
+Handles massive log files without freezing the UI or locking files in Windows Explorer.
 
-## Live Development
+## Download
 
-To run in live development mode, ensure you have [Wails](https://wails.io/) installed, then run:
+Go to the [Releases](https://github.com/ciguliaz/log-viewer/releases/latest) page, download the `.zip` file, extract `log-viewer.exe`, and run it. No installation required.
+
+The app checks for updates automatically — when a new version is available, a notification appears in the title bar.
+
+## Features
+
+- **Real-time tailing** — Streams log updates live as they are written to disk
+- **Large file support** — Virtualized rendering handles 500,000+ lines without lag
+- **Auto-parsing** — Extracts timestamps, log levels (INFO/ERROR/WARN), and tags into columns
+- **Compact mode** — Groups repeated log entries with occurrence counts and time ranges
+- **Drag & drop** — Drop folders directly into the app to start viewing
+- **Workspace persistence** — Remembers your folders between sessions
+- **File-safe** — Uses a lock-free polling mechanism that never blocks file operations in Explorer
+- **Auto-update** — Built-in update checker with one-click update from within the app
+
+## Development
+
+### Prerequisites
+
+- [Go](https://go.dev/dl/) 1.23+
+- [Node.js](https://nodejs.org/) 20+
+- [Wails CLI](https://wails.io/docs/gettingstarted/installation)
+
+### Run in dev mode
 
 ```bash
 wails dev
 ```
 
-This will boot a Vite development server that provides extremely fast hot-reloading of frontend changes. It also starts a local dev server at `http://localhost:34115` if you prefer testing the UI in your web browser.
-
-## Building for Production
-
-To build a standalone, redistributable `.exe` for Windows, use:
+### Build for production
 
 ```bash
 wails build
 ```
 
-The compiled binary will be placed in the `build/bin/` directory.
+The compiled binary will be in `build/bin/`.
 
----
-*For in-depth technical details on how the lock-free polling architecture works and a list of known edge cases, please see [ARCHITECTURE.md](ARCHITECTURE.md).*
+## Architecture
+
+For technical details on the lock-free polling mechanism and parsing pipeline, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## License
+
+MIT

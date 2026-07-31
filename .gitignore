@@ -1,4 +1,21 @@
-build/bin
-node_modules
-frontend/dist
-test.exe
+# Build output
+build/bin/
+*.exe
+*.exe.old
+
+# Dependencies
+node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Go
+*.test
