@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import './App.css';
-import { EventsOn, WindowMinimise, WindowToggleMaximise, WindowIsMaximised, Quit } from '../wailsjs/runtime/runtime';
+import { EventsOn, WindowMinimise, WindowToggleMaximise, WindowIsMaximised, Quit, BrowserOpenURL } from '../wailsjs/runtime/runtime';
 import { SelectFolder, ListFiles, StartTailing, StopTailing, LoadPreviousChunk, ProcessDrop, CheckForUpdate, ApplyUpdate, GetVersion } from '../wailsjs/go/main/App';
 import { main } from '../wailsjs/go/models';
 import { TableVirtuoso, TableVirtuosoHandle } from 'react-virtuoso';
@@ -70,6 +70,20 @@ function App() {
     const [appVersion, setAppVersion] = useState<string>('');
     const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
     
+    // Feedback State
+    const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+    const [feedbackType, setFeedbackType] = useState<'Bug' | 'Feature'>('Bug');
+    const [feedbackText, setFeedbackText] = useState('');
+    const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+    
+    // Toast Notification State
+    const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+    
+    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 3000); // Auto-hide after 3s
+    };
+    
     const checkUpdate = async (manual: boolean = false) => {
         if (isCheckingUpdate) return;
         if (manual) setIsCheckingUpdate(true);
@@ -79,11 +93,11 @@ function App() {
                 setUpdateInfo(info);
                 if (manual) setShowUpdateModal(true);
             } else if (manual) {
-                alert("You are on the latest version.");
+                showToast("You are on the latest version.");
             }
         } catch (e) {
             console.error("Failed to check for updates:", e);
-            if (manual) alert("Failed to check for updates.");
+            if (manual) showToast("Failed to check for updates.", "error");
         } finally {
             if (manual) setIsCheckingUpdate(false);
         }
@@ -107,12 +121,44 @@ function App() {
         try {
             // @ts-ignore
             await ApplyUpdate();
-            alert("Update successful! Please restart the application.");
-            Quit();
+            showToast("Update successful! Please restart the application.", "success");
+            setTimeout(() => Quit(), 1500);
         } catch (e) {
             console.error("Update failed:", e);
-            alert("Update failed: " + e);
+            showToast("Update failed: " + e, "error");
             setIsUpdating(false);
+        }
+    };
+    
+    const handleSubmitFeedback = async () => {
+        if (!feedbackText.trim()) return;
+        
+        setIsSubmittingFeedback(true);
+        try {
+            const response = await fetch("https://hook.eu1.make.com/kia7d51g84oar77mnhywam9ujzvivwvx", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    type: feedbackType,
+                    message: feedbackText,
+                    version: appVersion || 'unknown'
+                }),
+            });
+            
+            if (response.ok) {
+                showToast("Thank you! Your feedback has been submitted successfully.", "success");
+                setShowFeedbackModal(false);
+                setFeedbackText('');
+            } else {
+                showToast("Failed to submit feedback. Please try again later.", "error");
+            }
+        } catch (e) {
+            console.error("Feedback error:", e);
+            showToast("Failed to submit feedback. Please check your internet connection.", "error");
+        } finally {
+            setIsSubmittingFeedback(false);
         }
     };
     
@@ -529,6 +575,17 @@ function App() {
                         </div>
                     </div>
                 </div>
+                <div className="menu-item">
+                    Help
+                    <div className="menu-dropdown">
+                        <div className="menu-dropdown-item" onClick={() => { setFeedbackType('Bug'); setShowFeedbackModal(true); }}>
+                            Report a Bug...
+                        </div>
+                        <div className="menu-dropdown-item" onClick={() => { setFeedbackType('Feature'); setShowFeedbackModal(true); }}>
+                            Suggest a Feature...
+                        </div>
+                    </div>
+                </div>
                 
                 <div className="window-controls">
                     {updateInfo && (
@@ -789,6 +846,78 @@ function App() {
                             </button>
                         </div>
                     </div>
+                </div>
+            )}
+            
+            {/* Feedback Modal */}
+            {showFeedbackModal && (
+                <div className="modal-overlay" onClick={() => !isSubmittingFeedback && setShowFeedbackModal(false)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ width: '500px' }}>
+                        <h2>{feedbackType === 'Bug' ? 'Report a Bug' : 'Suggest a Feature'}</h2>
+                        <div style={{ marginTop: '8px', marginBottom: '16px', fontSize: '12px', color: 'var(--text-dim)' }}>
+                            Describe the issue or feature you'd like to see. This will be sent directly to the developer.
+                        </div>
+                        <textarea
+                            value={feedbackText}
+                            onChange={(e) => setFeedbackText(e.target.value)}
+                            placeholder={`Type your ${feedbackType.toLowerCase()} description here...`}
+                            style={{ 
+                                width: '100%', 
+                                boxSizing: 'border-box', // Fixes the misalignment!
+                                height: '150px', 
+                                background: 'var(--bg-dark)', 
+                                color: 'var(--text-main)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '4px',
+                                padding: '10px',
+                                fontSize: '13px',
+                                resize: 'none',
+                                marginBottom: '20px',
+                                outline: 'none',
+                                fontFamily: 'inherit'
+                            }}
+                            disabled={isSubmittingFeedback}
+                            autoFocus
+                        />
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                            <button 
+                                onClick={() => setShowFeedbackModal(false)} 
+                                disabled={isSubmittingFeedback}
+                                style={{ padding: '6px 14px', background: 'var(--bg-hover)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={handleSubmitFeedback} 
+                                disabled={isSubmittingFeedback || !feedbackText.trim()}
+                                style={{ padding: '6px 14px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '4px', cursor: (isSubmittingFeedback || !feedbackText.trim()) ? 'not-allowed' : 'pointer', fontSize: '12px', opacity: (!feedbackText.trim()) ? 0.5 : 1 }}
+                            >
+                                {isSubmittingFeedback ? 'Submitting...' : 'Submit Feedback'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {/* Custom Toast Notification */}
+            {toast && (
+                <div style={{
+                    position: 'fixed',
+                    bottom: '20px',
+                    right: '20px',
+                    background: toast.type === 'success' ? '#10b981' : '#ef4444',
+                    color: '#fff',
+                    padding: '12px 20px',
+                    borderRadius: '6px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    zIndex: 2000,
+                    fontSize: '13px',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    animation: 'slideIn 0.2s ease-out'
+                }}>
+                    {toast.message}
                 </div>
             )}
         </div>
