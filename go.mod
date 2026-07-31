@@ -1,4 +1,4 @@
-module hatacone-log-viewer
+module log-viewer
 
 go 1.25.0
 

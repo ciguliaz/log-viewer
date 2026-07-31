@@ -33,7 +33,7 @@ func getFirstValidPath(paths []string) string {
 
 func getDefaultDir() string {
 	paths := []string{
-		`C:\Program Files (x86)\hatacone\logs`,
+		`C:\Program Files (x86)\logs`,
 		`C:\`,
 	}
 	

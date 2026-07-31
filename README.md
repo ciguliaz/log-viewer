@@ -1,4 +1,4 @@
-# Hatacone Log Viewer
+# Log Viewer
 
 A high-performance, real-time log viewer built with Wails (Go) and React (TypeScript). Designed to handle massive log files seamlessly without freezing the UI or triggering Windows file locking issues.
 
