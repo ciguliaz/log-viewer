@@ -68,23 +68,38 @@ function App() {
     const [showUpdateModal, setShowUpdateModal] = useState(false);
     const [isUpdating, setIsUpdating] = useState(false);
     const [appVersion, setAppVersion] = useState<string>('');
+    const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+    
+    const checkUpdate = async (manual: boolean = false) => {
+        if (isCheckingUpdate) return;
+        if (manual) setIsCheckingUpdate(true);
+        try {
+            const info = await CheckForUpdate();
+            if (info && info.available) {
+                setUpdateInfo(info);
+                if (manual) setShowUpdateModal(true);
+            } else if (manual) {
+                alert("You are on the latest version.");
+            }
+        } catch (e) {
+            console.error("Failed to check for updates:", e);
+            if (manual) alert("Failed to check for updates.");
+        } finally {
+            if (manual) setIsCheckingUpdate(false);
+        }
+    };
     
     useEffect(() => {
         // Fetch current version
         GetVersion().then(v => setAppVersion(v)).catch(() => {});
         
-        const checkUpdate = async () => {
-            try {
-                const info = await CheckForUpdate();
-                if (info && info.available) {
-                    setUpdateInfo(info);
-                }
-            } catch (e) {
-                console.error("Failed to check for updates:", e);
-            }
-        };
-        // Delay update check slightly to not block startup
-        setTimeout(checkUpdate, 2000);
+        // Check 2 seconds after startup
+        setTimeout(() => checkUpdate(false), 2000);
+        
+        // Check periodically every 6 hours (6 * 60 * 60 * 1000 ms)
+        const intervalId = setInterval(() => checkUpdate(false), 6 * 60 * 60 * 1000);
+        
+        return () => clearInterval(intervalId);
     }, []);
 
     const handleApplyUpdate = async () => {
@@ -544,7 +559,6 @@ function App() {
                 <div className="sidebar">
                     <div className="sidebar-header">
                         <span>EXPLORER</span>
-                        {appVersion && <span style={{ fontSize: '10px', color: 'var(--text-dim)', fontWeight: 'normal' }}>{appVersion}</span>}
                     </div>
                     <div className="file-list">
                         {workspaces.map(ws => (
@@ -588,7 +602,16 @@ function App() {
                             </div>
                         ))}
                     </div>
-            </div>
+                    <div className="version-text" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>{appVersion || '...'}</span>
+                        <span 
+                            onClick={() => checkUpdate(true)} 
+                            style={{ cursor: isCheckingUpdate ? 'wait' : 'pointer', color: 'var(--accent)' }}
+                        >
+                            {isCheckingUpdate ? 'Checking...' : 'Check for updates'}
+                        </span>
+                    </div>
+                </div>
             <div className="main-view">
                 {activeFile ? (
                     <>
