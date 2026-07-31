@@ -29,6 +29,14 @@ jobs:
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
+      - name: Patch version in wails.json
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          $json = Get-Content wails.json | ConvertFrom-Json
+          $json.info.productVersion = $version
+          $json | ConvertTo-Json -Depth 10 | Set-Content wails.json
+
       - name: Build Application
         run: wails build -ldflags "-X main.AppVersion=${{ github.ref_name }}"
 

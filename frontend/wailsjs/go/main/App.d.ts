@@ -8,6 +8,8 @@ export function CheckForUpdate():Promise<main.UpdateInfo>;
 
 export function GetInitialLogs():Promise<Array<main.LogEntry>>;
 
+export function GetVersion():Promise<string>;
+
 export function ListFiles(arg1:string):Promise<Array<main.FileInfo>>;
 
 export function LoadPreviousChunk():Promise<Array<main.LogEntry>>;

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import './App.css';
 import { EventsOn, WindowMinimise, WindowToggleMaximise, WindowIsMaximised, Quit } from '../wailsjs/runtime/runtime';
-import { SelectFolder, ListFiles, StartTailing, StopTailing, LoadPreviousChunk, ProcessDrop, CheckForUpdate, ApplyUpdate } from '../wailsjs/go/main/App';
+import { SelectFolder, ListFiles, StartTailing, StopTailing, LoadPreviousChunk, ProcessDrop, CheckForUpdate, ApplyUpdate, GetVersion } from '../wailsjs/go/main/App';
 import { main } from '../wailsjs/go/models';
 import { TableVirtuoso, TableVirtuosoHandle } from 'react-virtuoso';
 
@@ -67,11 +67,14 @@ function App() {
     const [updateInfo, setUpdateInfo] = useState<{available: boolean, version: string, releaseNotes: string} | null>(null);
     const [showUpdateModal, setShowUpdateModal] = useState(false);
     const [isUpdating, setIsUpdating] = useState(false);
+    const [appVersion, setAppVersion] = useState<string>('');
     
     useEffect(() => {
+        // Fetch current version
+        GetVersion().then(v => setAppVersion(v)).catch(() => {});
+        
         const checkUpdate = async () => {
             try {
-                // @ts-ignore - in case bindings aren't fully generated yet
                 const info = await CheckForUpdate();
                 if (info && info.available) {
                     setUpdateInfo(info);
@@ -515,11 +518,10 @@ function App() {
                 <div className="window-controls">
                     {updateInfo && (
                         <div 
-                            className="update-available-text"
                             onClick={() => setShowUpdateModal(true)}
-                            style={{ cursor: 'pointer', color: 'var(--accent)', fontSize: '12px', marginRight: '15px', display: 'flex', alignItems: 'center', fontWeight: 'bold' }}
+                            style={{ cursor: 'pointer', color: 'var(--accent)', fontSize: '11px', marginRight: '12px', display: 'flex', alignItems: 'center', '--wails-draggable': 'no-drag' } as React.CSSProperties}
                         >
-                            Update Available ({updateInfo.version})
+                            Update available
                         </div>
                     )}
                     <div className="window-control" onClick={() => WindowMinimise()}>
@@ -542,6 +544,7 @@ function App() {
                 <div className="sidebar">
                     <div className="sidebar-header">
                         <span>EXPLORER</span>
+                        {appVersion && <span style={{ fontSize: '10px', color: 'var(--text-dim)', fontWeight: 'normal' }}>{appVersion}</span>}
                     </div>
                     <div className="file-list">
                         {workspaces.map(ws => (
@@ -738,25 +741,28 @@ function App() {
             {/* Update Modal */}
             {showUpdateModal && updateInfo && (
                 <div className="modal-overlay" onClick={() => !isUpdating && setShowUpdateModal(false)}>
-                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ width: '500px' }}>
-                        <h2>Update Available: {updateInfo.version}</h2>
-                        <div style={{ marginTop: '15px', marginBottom: '20px', maxHeight: '300px', overflowY: 'auto', background: 'var(--bg-dark)', padding: '10px', borderRadius: '4px', whiteSpace: 'pre-wrap', fontSize: '13px' }}>
-                            {updateInfo.releaseNotes || "No release notes provided."}
+                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ width: '450px' }}>
+                        <h2>Update to {updateInfo.version}</h2>
+                        <div style={{ marginTop: '12px', marginBottom: '16px', fontSize: '12px', color: 'var(--text-dim)' }}>
+                            Current version: {appVersion}
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                        <div style={{ marginBottom: '20px', maxHeight: '200px', overflowY: 'auto', background: 'var(--bg-dark)', padding: '10px', borderRadius: '4px', whiteSpace: 'pre-wrap', fontSize: '12px', color: 'var(--text-main)' }}>
+                            {(updateInfo.releaseNotes || 'No release notes provided.').replace(/\*\*/g, '')}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                             <button 
                                 onClick={() => setShowUpdateModal(false)} 
                                 disabled={isUpdating}
-                                style={{ padding: '8px 16px', background: 'var(--bg-lighter)', color: 'var(--text-color)', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                style={{ padding: '6px 14px', background: 'var(--bg-hover)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
                             >
-                                Cancel
+                                Later
                             </button>
                             <button 
                                 onClick={handleApplyUpdate} 
                                 disabled={isUpdating}
-                                style={{ padding: '8px 16px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '4px', cursor: isUpdating ? 'wait' : 'pointer' }}
+                                style={{ padding: '6px 14px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '4px', cursor: isUpdating ? 'wait' : 'pointer', fontSize: '12px' }}
                             >
-                                {isUpdating ? 'Downloading & Updating...' : 'Update Now'}
+                                {isUpdating ? 'Updating...' : 'Update Now'}
                             </button>
                         </div>
                     </div>

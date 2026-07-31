@@ -14,6 +14,10 @@ export function GetInitialLogs() {
   return window['go']['main']['App']['GetInitialLogs']();
 }
 
+export function GetVersion() {
+  return window['go']['main']['App']['GetVersion']();
+}
+
 export function ListFiles(arg1) {
   return window['go']['main']['App']['ListFiles'](arg1);
 }

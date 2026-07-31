@@ -7,7 +7,13 @@
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "Nam Tran",
-    "email": "nam.td@zinza.com.vn"
+    "name": "Ciguliaz",
+    "email": "ckazzgd@gmail.com"
+  },
+  "info": {
+    "productName": "Log Viewer",
+    "productVersion": "0.0.0",
+    "copyright": "Ciguliaz",
+    "comments": "A log file viewer"
   }
 }

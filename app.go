@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"sync"
 )
 
@@ -62,6 +63,17 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	go a.broadcastLoop()
+
+	// Clean up leftover .old file from a previous self-update
+	go func() {
+		exe, err := os.Executable()
+		if err == nil {
+			oldExe := exe + ".old"
+			if _, err := os.Stat(oldExe); err == nil {
+				os.Remove(oldExe)
+			}
+		}
+	}()
 }
 
 // StopTailing explicitly stops tailing the active file, releasing its lock

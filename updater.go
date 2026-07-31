@@ -20,6 +20,11 @@ type UpdateInfo struct {
 	ReleaseNotes string `json:"releaseNotes"`
 }
 
+// GetVersion returns the current app version to the frontend.
+func (a *App) GetVersion() string {
+	return AppVersion
+}
+
 // CheckForUpdate calls the GitHub API to see if a newer version is available.
 func (a *App) CheckForUpdate() (UpdateInfo, error) {
 	if AppVersion == "dev" {
